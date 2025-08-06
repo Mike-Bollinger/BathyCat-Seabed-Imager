@@ -6,7 +6,7 @@ Storage Manager for BathyCat Seabed Imager
 Manages storage operations, disk space monitoring, and data organization
 for the underwater imaging system.
 
-Author: BathyCat Systems
+Author: Mike Bollinger
 Date: August 2025
 """
 

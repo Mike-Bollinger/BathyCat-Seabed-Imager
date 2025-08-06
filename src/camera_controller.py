@@ -6,7 +6,7 @@ Camera Controller for BathyCat Seabed Imager
 Handles USB camera operations for high-frequency image capture.
 Supports various camera backends including OpenCV and V4L2.
 
-Author: BathyCat Systems
+Author: Mike Bollinger
 Date: August 2025
 """
 

@@ -6,7 +6,7 @@ GPS Controller for BathyCat Seabed Imager
 Handles GPS communication, time synchronization, and position tracking
 using the Adafruit Ultimate GPS HAT.
 
-Author: BathyCat Systems
+Author: Mike Bollinger
 Date: August 2025
 """
 

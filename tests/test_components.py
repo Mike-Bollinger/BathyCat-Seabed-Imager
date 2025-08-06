@@ -5,7 +5,7 @@ Test Suite for BathyCat Seabed Imager
 
 Comprehensive test suite for validating system components.
 
-Author: BathyCat Systems
+Author: Mike Bollinger
 Date: August 2025
 """
 

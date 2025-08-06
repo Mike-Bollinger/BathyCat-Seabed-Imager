@@ -6,7 +6,7 @@ Image Processor for BathyCat Seabed Imager
 Handles image processing, metadata embedding, and file operations
 for captured seabed images.
 
-Author: BathyCat Systems
+Author: Mike Bollinger
 Date: August 2025
 """
 

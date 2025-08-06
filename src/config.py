@@ -5,7 +5,7 @@ Configuration Management for BathyCat Seabed Imager
 
 Handles configuration loading and validation for the imaging system.
 
-Author: BathyCat Systems
+Author: Mike Bollinger
 Date: August 2025
 """
 

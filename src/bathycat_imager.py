@@ -6,7 +6,7 @@ BathyCat Seabed Imager - Main Application
 Main application for controlling the underwater imaging system.
 Coordinates camera capture, GPS tagging, and data storage.
 
-Author: BathyCat Systems
+Author: Mike Bollinger
 Date: August 2025
 """
 
