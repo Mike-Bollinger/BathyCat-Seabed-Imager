@@ -24,7 +24,16 @@ INSTALL_DIR="/opt/bathycat"
 CONFIG_DIR="/etc/bathycat"
 LOG_DIR="/var/log/bathycat"
 SERVICE_NAME="bathycat-imager"
-USER="pi"
+
+# Detect the actual user (not root, but the user who called sudo)
+if [ -n "$SUDO_USER" ]; then
+    USER="$SUDO_USER"
+else
+    # Fallback: find the first non-root user with a home directory
+    USER=$(awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}' /etc/passwd | head -1)
+fi
+
+print_status "Detected user: $USER"
 
 # Function to print colored output
 print_status() {

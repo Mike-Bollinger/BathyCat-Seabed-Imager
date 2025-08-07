@@ -448,15 +448,59 @@ Session:
 ### Automated Installation
 
 1. **Download Project**
+   
+   **Option A: From GitHub (requires Git installation)**
    ```bash
-   # Clone or download the project
-   wget https://github.com/your-repo/bathycat-seabed-imager/archive/main.zip
+   # First install Git (not included in Raspberry Pi OS Lite)
+   sudo apt update
+   sudo apt install -y git
+   
+   # Then clone the repository
+   git clone https://github.com/Mike-Bollinger/BathyCat-Seabed-Imager.git
+   cd BathyCat-Seabed-Imager
+   ```
+   
+   **Option B: Direct download without Git (recommended for now)**
+   ```bash
+   # Install wget and unzip if not present
+   sudo apt update
+   sudo apt install -y wget unzip
+   
+   # Download and extract project
+   wget https://github.com/Mike-Bollinger/BathyCat-Seabed-Imager/archive/main.zip
    unzip main.zip
-   cd bathycat-seabed-imager-main
+   cd BathyCat-Seabed-Imager-main
+   ```
+   
+   **Option C: Transfer from development computer (if GitHub not available)**
+   ```bash
+   # If GitHub repo gives 404 error, transfer files from your dev computer
+   
+   # On Raspberry Pi, create project directory
+   mkdir -p ~/bathycat-project
+   cd ~/bathycat-project
+   
+   # Transfer methods:
+   # Method 1: SCP from Windows PowerShell
+   # On Windows: scp -r "C:\Users\Mike.Bollinger\Documents\Python\BathyCat-Seabed-Imager" bathyimager@[PI_IP]:~/bathycat-project/
+   
+   # Method 2: USB flash drive transfer
+   # - Copy entire project folder to USB drive on Windows
+   # - Insert USB into Pi and mount:
+   sudo mkdir -p /mnt/usb
+   sudo mount /dev/sda1 /mnt/usb  # Adjust device as needed
+   cp -r /mnt/usb/BathyCat-Seabed-Imager ~/bathycat-project/
+   cd ~/bathycat-project/BathyCat-Seabed-Imager
+   sudo umount /mnt/usb
    ```
 
 2. **Run Installation Script**
    ```bash
+   # Navigate to project directory (path depends on download method above)
+   # For GitHub clone: cd BathyCat-Seabed-Imager
+   # For archive: cd BathyCat-Seabed-Imager-main
+   # For manual transfer: cd ~/bathycat-project/BathyCat-Seabed-Imager
+   
    # Make script executable
    chmod +x scripts/install.sh
    
