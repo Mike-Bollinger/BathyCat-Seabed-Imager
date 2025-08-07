@@ -1,14 +1,14 @@
 #!/bin/bash
-"""
-BathyCat Seabed Imager - Installation Script
-===========================================
-
-Automated installation script for Raspberry Pi OS.
-This script will install all dependencies and configure the system.
-
-Author: BathyCat Systems
-Date: August 2025
-"""
+#
+# BathyCat Seabed Imager - Installation Script
+# ===========================================
+#
+# Automated installation script for Raspberry Pi OS.
+# This script will install all dependencies and configure the system.
+#
+# Author: BathyCat Systems
+# Date: August 2025
+#
 
 set -e  # Exit on any error
 
@@ -18,22 +18,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
-
-# Configuration
-INSTALL_DIR="/opt/bathycat"
-CONFIG_DIR="/etc/bathycat"
-LOG_DIR="/var/log/bathycat"
-SERVICE_NAME="bathycat-imager"
-
-# Detect the actual user (not root, but the user who called sudo)
-if [ -n "$SUDO_USER" ]; then
-    USER="$SUDO_USER"
-else
-    # Fallback: find the first non-root user with a home directory
-    USER=$(awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}' /etc/passwd | head -1)
-fi
-
-print_status "Detected user: $USER"
 
 # Function to print colored output
 print_status() {
@@ -51,6 +35,22 @@ print_warning() {
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
+
+# Configuration
+INSTALL_DIR="/opt/bathycat"
+CONFIG_DIR="/etc/bathycat"
+LOG_DIR="/var/log/bathycat"
+SERVICE_NAME="bathycat-imager"
+
+# Detect the actual user (not root, but the user who called sudo)
+if [ -n "$SUDO_USER" ]; then
+    USER="$SUDO_USER"
+else
+    # Fallback: find the first non-root user with a home directory
+    USER=$(awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}' /etc/passwd | head -1)
+fi
+
+print_status "Detected user: $USER"
 
 # Function to check if running as root
 check_root() {
