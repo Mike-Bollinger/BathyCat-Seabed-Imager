@@ -36,10 +36,10 @@ This guide provides step-by-step instructions for setting up the BathyCat Seabed
    - USB 3.0 interface for optimal transfer rates
    - Marine-grade waterproof housing preferred
 
-4. **Adafruit Ultimate GPS HAT** - [Adafruit Link](https://www.adafruit.com/product/5440)
-   - GPS positioning and time synchronization
-   - Built-in battery backup
-   - PPS (Pulse Per Second) support
+4. **Adafruit Mini GPS PA1010D - USB Version** - [Adafruit Link](https://www.adafruit.com/product/4279)
+   - GPS positioning and time synchronization  
+   - USB interface for easy connection
+   - Built-in antenna with uFL connector for external antenna
 
 ### Additional Requirements
 
@@ -400,10 +400,9 @@ Session:
 
 ### 1. Raspberry Pi Setup
 
-1. **Install GPS HAT**
-   - Power down Raspberry Pi
-   - Carefully attach GPS HAT to GPIO pins
-   - Ensure proper alignment and connection
+1. **Connect USB GPS**
+   - Connect Adafruit Mini GPS PA1010D to any available USB port
+   - GPS will be auto-detected by the software
 
 2. **Connect USB Storage**
    - Connect 512GB USB 3.0 flash drive to USB 3.0 port (blue port)
@@ -484,9 +483,11 @@ If automated installation fails, follow these manual steps:
    sudo apt update
    sudo apt install -y python3 python3-pip python3-venv \
                        python3-opencv libopencv-dev \
-                       gpsd gpsd-clients chrony \
+                       chrony \
                        git cmake pkg-config
    ```
+   
+   **Note:** GPSD is no longer required with USB GPS - the software communicates directly with the GPS device.
 
 2. **Python Environment**
    ```bash
@@ -544,34 +545,52 @@ If automated installation fails, follow these manual steps:
 
 ### 2. GPS Configuration
 
-1. **Configure Serial Port**
+**USB GPS Setup (Automatic Detection)**
+
+The Adafruit Mini GPS PA1010D connects via USB and is automatically detected by the software.
+
+1. **Verify GPS Connection**
    ```bash
-   # Edit boot config
-   sudo nano /boot/config.txt
+   # Check if GPS device is detected
+   lsusb
+   # Look for Adafruit device or USB-Serial adapter
    
-   # Add these lines:
-   enable_uart=1
-   dtoverlay=disable-bt
+   # Check available serial ports  
+   ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null || echo "No USB serial devices found"
+   
+   # List detailed USB serial devices
+   python3 -c "
+   import serial.tools.list_ports
+   for port in serial.tools.list_ports.comports():
+       print(f'{port.device}: {port.description}')
+   "
    ```
 
-2. **Configure GPSD**
+2. **Test GPS Communication** 
    ```bash
-   sudo nano /etc/default/gpsd
-   ```
-   
-   ```bash
-   START_DAEMON="true"
-   USBAUTO="false"
-   DEVICES="/dev/serial0"
-   GPSD_OPTIONS="-n -s 9600"
+   # If GPS is detected as /dev/ttyUSB0 or /dev/ttyACM0, test it:
+   sudo cat /dev/ttyUSB0
+   # You should see NMEA sentences like $GPGGA, $GPRMC, etc.
+   # Press Ctrl+C to stop
    ```
 
-3. **Test GPS**
+3. **Optional: Manual GPS Port Configuration**
+   
+   *Only needed if auto-detection fails:*
    ```bash
-   sudo systemctl start gpsd
-   cgps -s
-   # Should show GPS data when fix is acquired
+   # Edit configuration to specify exact port
+   sudo nano /etc/bathycat/config.json
+   
+   # Change "gps_port": "auto" to specific port:
+   # "gps_port": "/dev/ttyUSB0"    # or whatever port your GPS uses
    ```
+
+**Note:** Unlike the GPS HAT, the USB GPS does not require:
+- UART configuration in `/boot/config.txt`
+- GPSD installation or configuration
+- Disabling Bluetooth on UART
+
+The USB GPS is plug-and-play!
 
 ### 3. Camera Configuration
 
@@ -605,8 +624,7 @@ If automated installation fails, follow these manual steps:
    ```ini
    [Unit]
    Description=BathyCat Seabed Imager
-   After=network.target gpsd.service
-   Wants=gpsd.service
+   After=network.target
 
    [Service]
    Type=simple

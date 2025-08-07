@@ -24,7 +24,7 @@ This guide covers the physical assembly and configuration of the BathyCat Seabed
 | **Raspberry Pi 4 Model B (4GB)** | ARM Cortex-A72, 4GB RAM, USB 3.0 | Main processing unit |
 | **StellarHD USB Camera** | 1080p@30fps, USB 3.0, IP67 rated | Underwater imaging |
 | **512GB USB 3.0 Flash Drive** | USB 3.0 interface, 512GB capacity | High-speed storage |
-| **Adafruit Ultimate GPS HAT** | GPS/GLONASS, PPS output, battery backup | Position and time sync |
+| **Adafruit Mini GPS PA1010D - USB Version** | GPS/GLONASS, USB interface, compact design | Position and time sync |
 
 ### Supporting Hardware
 
@@ -55,29 +55,28 @@ This guide covers the physical assembly and configuration of the BathyCat Seabed
    - Note: Card will extend slightly from slot
    ```
 
-### Step 2: GPS HAT Installation
+### Step 2: USB GPS Connection
 
-1. **Pre-Installation Check**
+1. **Pre-Connection Check**
    ```
-   - Verify GPIO pins are straight and undamaged
-   - Check GPS HAT for any shipping damage
-   - Ensure antenna connector is secure
+   - Verify USB GPS module is undamaged
+   - Check antenna connector is secure
+   - Ensure USB cable is high-quality (data + power capable)
    ```
 
-2. **Installation Process**
+2. **Connection Process**
    ```
-   - Power down Raspberry Pi completely
-   - Align GPS HAT with GPIO header (pin 1 to pin 1)
-   - Press down evenly until fully seated
-   - Do not force - should slide on easily
-   - Verify no pins are bent or missed
+   - Connect USB GPS module to any available USB port on Pi
+   - No special configuration required - plug and play
+   - Module will be auto-detected as /dev/ttyUSB0 or /dev/ttyACM0
    ```
 
 3. **GPS Antenna Connection**
    ```
-   - Connect active GPS antenna to uFL connector
-   - Ensure connector is firmly seated (you should feel/hear click)
+   - Connect GPS antenna to module (if external antenna used)
+   - Ensure connector is firmly seated
    - Route antenna cable to prevent stress on connector
+   - Built-in ceramic antenna works for basic testing
    ```
 
 ### Step 3: Storage Connection
@@ -184,7 +183,7 @@ This guide covers the physical assembly and configuration of the BathyCat Seabed
 | Component | Typical Draw | Peak Draw |
 |-----------|-------------|-----------|
 | Raspberry Pi 4 | 2.5A @ 5V | 3.0A @ 5V |
-| GPS HAT | 0.1A @ 5V | 0.2A @ 5V |
+| USB GPS | 0.05A @ 5V | 0.1A @ 5V |
 | StellarHD Camera | 0.5A @ 5V | 0.8A @ 5V |
 | USB Flash Drive | 0.2A @ 5V | 0.4A @ 5V |
 | **Total System** | **3.3A @ 5V** | **4.4A @ 5V** |

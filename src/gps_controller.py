@@ -4,7 +4,7 @@ GPS Controller for BathyCat Seabed Imager
 ========================================
 
 Handles GPS communication, time synchronization, and position tracking
-using the Adafruit Ultimate GPS HAT.
+using the Adafruit Mini GPS PA1010D USB module.
 
 Author: Mike Bollinger
 Date: August 2025
@@ -60,9 +60,16 @@ class GPSController:
     
     async def initialize(self) -> bool:
         """Initialize GPS connection."""
-        self.logger.info(f"Initializing GPS on {self.port} @ {self.baudrate}")
+        self.logger.info(f"Initializing USB GPS on {self.port} @ {self.baudrate}")
         
         try:
+            # For USB GPS, we may need to detect the correct port
+            if self.port == "auto" or not self.port:
+                self.port = await self._detect_usb_gps_port()
+                if not self.port:
+                    self.logger.error("Could not detect USB GPS device")
+                    return False
+            
             # Open serial connection
             self.serial_port = serial.Serial(
                 port=self.port,
@@ -90,12 +97,53 @@ class GPSController:
             await self._configure_gps()
             
             self.is_initialized = True
-            self.logger.info("GPS initialization complete")
+            self.logger.info(f"USB GPS initialization complete on {self.port}")
             return True
             
         except Exception as e:
             self.logger.error(f"GPS initialization failed: {e}")
             return False
+    
+    async def _detect_usb_gps_port(self) -> Optional[str]:
+        """Detect USB GPS device port automatically."""
+        try:
+            import serial.tools.list_ports
+            
+            # Look for Adafruit GPS devices
+            gps_ports = []
+            
+            for port in serial.tools.list_ports.comports():
+                # Check for Adafruit VID/PID or common GPS device names
+                if (port.vid == 0x239A or  # Adafruit VID
+                    'GPS' in port.description.upper() or
+                    'ADAFRUIT' in port.description.upper() or
+                    'PA1010D' in port.description.upper()):
+                    gps_ports.append(port.device)
+                    self.logger.info(f"Found potential GPS device: {port.device} - {port.description}")
+            
+            # If no specific GPS devices found, look for generic USB-Serial devices
+            if not gps_ports:
+                for port in serial.tools.list_ports.comports():
+                    if ('USB' in port.description.upper() and 
+                        'SERIAL' in port.description.upper()):
+                        gps_ports.append(port.device)
+                        self.logger.info(f"Found USB-Serial device: {port.device} - {port.description}")
+            
+            if gps_ports:
+                # Try the first detected port
+                selected_port = gps_ports[0]
+                self.logger.info(f"Auto-detected GPS port: {selected_port}")
+                return selected_port
+            
+            self.logger.error("No USB GPS device detected")
+            return None
+            
+        except ImportError:
+            self.logger.warning("serial.tools.list_ports not available, cannot auto-detect GPS")
+            return None
+        except Exception as e:
+            self.logger.error(f"GPS port detection error: {e}")
+            return None
     
     async def _test_gps_communication(self) -> bool:
         """Test GPS communication by reading NMEA sentences."""

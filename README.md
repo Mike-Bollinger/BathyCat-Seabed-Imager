@@ -11,7 +11,7 @@ This system captures seabed images using a USB camera, tags them with GPS coordi
 - **Raspberry Pi 4 Model B (4GB)** - Main processing unit
 - **StellarHD USB Camera** - Underwater imaging (1080p@30fps capable)
 - **512GB USB 3.0 Flash Drive** - High-speed local storage
-- **Adafruit Ultimate GPS HAT** - GPS positioning and time sync
+- **Adafruit Mini GPS PA1010D - USB Version** - GPS positioning and time sync
 - **Waterproof housing** - Protection for Pi and connections
 
 ### Key Features
@@ -25,7 +25,7 @@ This system captures seabed images using a USB camera, tags them with GPS coordi
 
 ## Quick Start
 
-1. **Hardware Setup**: Connect camera, GPS HAT, and USB storage
+1. **Hardware Setup**: Connect camera, USB GPS, and USB storage
 2. **OS Installation**: Flash Raspberry Pi OS Lite (64-bit)
 3. **Software Setup**: Run the automated installation script
 4. **Configuration**: Set capture parameters and storage paths
@@ -73,7 +73,7 @@ BathyCat-Seabed-Imager/
 - 32GB+ microSD card (for OS)
 - 512GB USB 3.0 Flash Drive (for image storage)
 - USB 3.0 camera (StellarHD or compatible)
-- GPS HAT with PPS support
+- USB GPS module with antenna
 
 ## Disclaimer
 

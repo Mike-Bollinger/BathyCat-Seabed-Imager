@@ -89,7 +89,7 @@ class Config:
             "camera_saturation": 60,
             
             # GPS settings
-            "gps_port": "/dev/serial0",
+            "gps_port": "auto",  # Auto-detect USB GPS device
             "gps_baudrate": 9600,
             "gps_timeout": 1.0,
             "gps_time_sync": True,

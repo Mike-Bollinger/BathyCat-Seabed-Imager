@@ -15,7 +15,7 @@
   "camera_exposure": -6,
   "camera_white_balance": 4000,
   
-  "gps_port": "/dev/serial0",
+  "gps_port": "auto",
   "gps_baudrate": 9600,
   "gps_timeout": 1.0,
   "gps_time_sync": true,

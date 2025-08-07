@@ -57,82 +57,95 @@ journalctl -u bathycat-imager --no-pager -n 20
 
 1. **Check Hardware Connections**
    ```bash
-   # Verify GPS HAT is detected
-   sudo i2cdetect -y 1
+   # Verify USB GPS is detected
+   lsusb | grep -i adafruit
    
-   # Check serial port
-   ls -la /dev/serial0
+   # Check USB serial ports
+   ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null || echo "No USB serial devices found"
    
-   # Test serial data
-   sudo cat /dev/serial0
+   # Test GPS communication
+   sudo cat /dev/ttyUSB0    # Adjust port as needed
    # Should see NMEA sentences like $GPGGA...
+   # Press Ctrl+C to stop
    ```
 
-2. **Test GPS Service**
+2. **Test GPS Service** 
    ```bash
    # Stop main service
    sudo systemctl stop bathycat-imager
    
-   # Test GPSD directly
-   sudo systemctl start gpsd
-   cgps -s
+   # Check GPS auto-detection
+   python3 -c "
+   import serial.tools.list_ports
+   for port in serial.tools.list_ports.comports():
+       if 'USB' in port.description or 'GPS' in port.description:
+           print(f'Found GPS: {port.device} - {port.description}')
+   "
    
-   # Check GPS status
-   gpsstat
+   # Test direct communication
+   python3 -c "
+   import serial
+   gps = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)  # Adjust port
+   for i in range(5):
+       print(gps.readline().decode('ascii', errors='ignore').strip())
+   gps.close()
+   "
    ```
 
-3. **Check Antenna**
+3. **Check Antenna and Fix Status**
    ```bash
-   # Test antenna connection
-   sudo gpspipe -r -n 10 | grep GGA
+   # Monitor GPS data in real-time
+   sudo timeout 30 cat /dev/ttyUSB0 | grep 'GGA\|RMC'
    
-   # Check for active antenna power
-   # Some antennas need 3.3V or 5V power
+   # Look for fix indicators in NMEA sentences:
+   # $GPGGA: field 6 should be > 0 (GPS quality)
+   # $GPRMC: field 2 should be 'A' (valid fix)
    ```
 
 **Solutions:**
 
-1. **Antenna Issues**
+1. **Port Detection Issues**
    ```bash
-   # Check antenna placement
-   # - Clear sky view (no metal obstruction)
-   # - Away from electronics
-   # - Properly connected to GPS HAT
+   # If GPS port changes, update config
+   sudo nano /etc/bathycat/config.json
+   # Set specific port instead of "auto":
+   # "gps_port": "/dev/ttyUSB0"
    
-   # For active antennas, verify power
-   sudo gpio mode 1 out
-   sudo gpio write 1 1  # Enable antenna power
+   # For permanent USB port assignment
+   # Find GPS device info
+   udevadm info -a -n /dev/ttyUSB0 | grep -E 'ATTRS{serial}|ATTRS{idVendor}|ATTRS{idProduct}'
+   
+   # Create udev rule for consistent naming
+   sudo nano /etc/udev/rules.d/99-gps.rules
+   # Add rule like:
+   # SUBSYSTEM=="tty", ATTRS{idVendor}=="239a", ATTRS{idProduct}=="8015", SYMLINK+="gps"
+   # Then use "/dev/gps" as port
    ```
 
-2. **Serial Port Configuration**
+2. **USB Power Issues**
    ```bash
-   # Check boot configuration
+   # Check USB power management
+   echo 'on' | sudo tee /sys/bus/usb/devices/*/power/control
+   
+   # Disable USB selective suspend
    sudo nano /boot/config.txt
-   # Ensure these lines exist:
-   enable_uart=1
-   dtoverlay=disable-bt
+   # Add: usb_max_current=1
    
-   # Disable serial console
-   sudo raspi-config
-   # Advanced > Serial > No to console, Yes to hardware
-   
-   # Reboot after changes
-   sudo reboot
+   # Or disable power management permanently
+   sudo nano /etc/modprobe.d/usb-no-suspend.conf
+   # Add: options usbcore autosuspend=-1
    ```
 
-3. **GPSD Configuration**
+3. **GPS Configuration Issues**
    ```bash
-   # Edit GPSD config
-   sudo nano /etc/default/gpsd
+   # Reset GPS to factory defaults (if supported)
+   echo -e '\$PMTK104*37\r\n' | sudo tee /dev/ttyUSB0
    
-   # Correct configuration:
-   START_DAEMON="true"
-   USBAUTO="false"
-   DEVICES="/dev/serial0"
-   GPSD_OPTIONS="-n -s 9600"
+   # Set GPS update rate (1 Hz = 1000ms)
+   echo -e '\$PMTK220,1000*1F\r\n' | sudo tee /dev/ttyUSB0
    
-   # Restart service
-   sudo systemctl restart gpsd
+   # Enable specific NMEA sentences
+   echo -e '\$PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*28\r\n' | sudo tee /dev/ttyUSB0
    ```
 
 ### Problem: GPS Fix Lost During Operation
@@ -444,7 +457,7 @@ journalctl -u bathycat-imager --no-pager -n 20
      "capture_fps": 4.0,           // Must be positive number
      "camera_device_id": 0,        // Check with v4l2-ctl --list-devices
      "storage_base_path": "/media/usb-storage/bathycat",  // Must exist
-     "gps_port": "/dev/serial0"    // Check if exists
+     "gps_port": "auto"            // Or specific port like "/dev/ttyUSB0"
    }
    ```
 
