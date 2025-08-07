@@ -102,7 +102,7 @@ class Config:
             "preview_width": 320,
             
             # Storage settings
-            "storage_base_path": "/media/ssd/bathycat",
+            "storage_base_path": "/media/usb-storage/bathycat",
             "min_free_space_gb": 5.0,
             "auto_cleanup_enabled": True,
             "cleanup_threshold_gb": 10.0,

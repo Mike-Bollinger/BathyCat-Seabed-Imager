@@ -10,7 +10,10 @@ This guide provides step-by-step instructions for setting up the BathyCat Seabed
 4. [Software Installation](#software-installation)
 5. [System Configuration](#system-configuration)
 6. [Testing and Validation](#testing-and-validation)
-7. [Deployment](#deployment)
+7. [Deployment](#dep4. **Storage Issues**
+   - Check mount status: `mount | grep usb-storage`
+   - Verify permissions: `ls -la /media/usb-storage/bathycat`
+   - Check disk space: `df -h`ent)
 8. [Maintenance](#maintenance)
 
 ---
@@ -28,9 +31,10 @@ This guide provides step-by-step instructions for setting up the BathyCat Seabed
    - USB 3.0 for high-speed data transfer
    - Waterproof housing included
 
-3. **512GB SSD Storage Kit** - [SparkFun Link](https://www.sparkfun.com/raspberry-pi-ssd-kit-for-raspberry-pi-512gb.html)
+3. **512GB USB 3.0 Flash Drive** - High-speed marine-grade recommended
    - High-speed storage for image data
-   - Includes USB 3.0 to SATA adapter
+   - USB 3.0 interface for optimal transfer rates
+   - Marine-grade waterproof housing preferred
 
 4. **Adafruit Ultimate GPS HAT** - [Adafruit Link](https://www.adafruit.com/product/5440)
    - GPS positioning and time synchronization
@@ -69,15 +73,56 @@ This guide provides step-by-step instructions for setting up the BathyCat Seabed
    - Run Raspberry Pi Imager
    - Choose "Raspberry Pi OS Lite (64-bit)"
    - Select your microSD card
-   - Click "Write"
+   - **BEFORE clicking "Write"**, click the **gear icon (⚙️)** for advanced options
 
-3. **Enable SSH (Headless Setup)**
+3. **Configure Advanced Settings (Recommended)**
+   
+   **In the Advanced Options dialog:**
+   
+   **SSH Configuration:**
+   - ✅ **Enable SSH**
+   - Select **"Use password authentication"**
+   
+   **User Account:**
+   - ✅ **Set username and password**
+   - Username: `bathyimager` (or your preferred username)
+   - Password: `bathyimager` (or your secure password)
+   - *Note: This replaces the default pi/raspberry credentials*
+   
+   **WiFi Configuration:**
+   - ✅ **Configure WiFi**
+   - SSID: `YourWiFiName` (e.g., "Nacho_Wifi")
+   - Password: `YourWiFiPassword`
+   - WiFi country: `US` (or your country)
+   
+   **Locale Settings:**
+   - ✅ **Set locale settings**
+   - Time zone: Select your timezone
+   - Keyboard layout: `us` (or your layout)
+   
+   **Other Options:**
+   - ✅ **Enable telemetry** (optional, helps Raspberry Pi Foundation)
+   - Click **"SAVE"**
+   
+   - Click **"Write"** to flash the card
+
+4. **Alternative Setup Methods**
+
+   **Method A - Modern Raspberry Pi Imager (Recommended Above)**
+   - All configuration done before flashing
+   - No manual file creation needed
+   - WiFi and SSH configured automatically
+   
+   **Method B - Manual File Configuration (Legacy/Backup)**
+   
+   *Use this if the advanced options don't work or for older Raspberry Pi Imager versions:*
+   
    ```bash
    # After flashing, on the boot partition, create:
-   touch /boot/ssh
+   touch ssh
    
    # For WiFi, create wpa_supplicant.conf:
-   nano /boot/wpa_supplicant.conf
+   nano wpa_supplicant.conf
    ```
 
    ```conf
@@ -91,26 +136,265 @@ This guide provides step-by-step instructions for setting up the BathyCat Seabed
    }
    ```
 
-4. **First Boot Setup**
-   ```bash
-   # Insert SD card and boot Pi
-   # SSH into the Pi (default password: raspberry)
+5. **First Boot Setup**
+
+   **Connection Methods:**
+
+   **Method 1 - WiFi Connection (Using Raspberry Pi Imager Advanced Options)**
+   
+   *If you configured WiFi in the Raspberry Pi Imager (recommended):*
+   
+   1. **Insert SD card** into Raspberry Pi and power on
+   2. **Wait 2-3 minutes** for boot and WiFi connection
+   3. **Find Pi on your network** using one of these methods:
+
+   **Finding the Raspberry Pi IP Address:**
+   
+   **Option A - Router Admin Panel (Easiest):**
+   ```
+   1. Access your router's admin interface:
+      - Common addresses: http://192.168.1.1, http://192.168.0.1, http://10.0.0.1
+      - Check router label for login credentials
+   2. Look for "Connected Devices", "DHCP Clients", or "Device List"
+   3. Find device named "bathyimager" (your custom hostname) or "raspberrypi"
+   4. Note the assigned IP address (e.g., 192.168.1.100)
+   ```
+   
+   **Option B - Advanced IP Scanner (Windows):**
+   ```
+   1. Download: https://www.advanced-ip-scanner.com/
+   2. Install and run Advanced IP Scanner
+   3. Scan your network range (it auto-detects)
+   4. Look for device with manufacturer "Raspberry Pi Foundation"
+   5. Note the IP address
+   ```
+   
+   **Option C - Network Scan (Windows PowerShell):**
+   ```powershell
+   # First check your network range
+   ipconfig
+   # Look for your WiFi adapter's network (e.g., 192.168.1.x)
+   
+   # Scan for Pi (replace network range as needed)
+   1..254 | ForEach-Object { 
+       if (Test-Connection -ComputerName "192.168.1.$_" -Count 1 -Quiet -TimeoutSeconds 1) { 
+           Write-Host "192.168.1.$_ is responding" 
+       } 
+   }
+   ```
+
+   **Option D - Try Hostname Resolution:**
+   ```powershell
+   # Try pinging the hostname
+   ping bathyimager.local     # Your custom hostname
+   ping raspberrypi.local     # Default hostname
+   
+   # If ping responds, use that for SSH
+   ```
+
+   **Method 2 - Direct Ethernet Connection (Alternative)**
+   
+   *Use this if WiFi setup fails or for isolated setup:*
+
+   **Step 1: Configure Your Windows PC**
+   1. **Open Network Settings:** Press `Windows + R`, type `ncpa.cpl`, press Enter
+   2. **Right-click Ethernet adapter** → Properties
+   3. **Double-click "Internet Protocol Version 4 (TCP/IPv4)"**
+   4. **Select "Use the following IP address":**
+      ```
+      IP address: 192.168.100.1
+      Subnet mask: 255.255.255.0
+      Default gateway: (leave blank)
+      DNS servers: (leave blank)
+      ```
+   5. **Click OK** twice
+
+   **Step 2: Configure Pi for Static IP**
+   1. **Power down Pi**, remove SD card, insert in PC
+   2. **Edit cmdline.txt** on boot partition
+   3. **Add to END of line** (don't create new line):
+      ```
+      ip=192.168.100.2::192.168.100.1:255.255.255.0:rpi:eth0:off
+      ```
+   4. **Connect Ethernet cable** between PC and Pi
+   5. **Power on Pi**, wait 2-3 minutes
+   6. **Test connection:** `ping 192.168.100.2`
+   7. **SSH to:** `192.168.100.2`
+
+   **Method 3 - Router Ethernet Connection (Standard)**
+   
+   *Traditional Ethernet connection through router:*
+   1. **Connect Pi to router** with Ethernet cable
+   2. **Power on Pi**, wait 2-3 minutes
+   3. **Find IP** using router admin panel or network scan
+   4. **SSH to discovered IP**
+
+   **SSH Connection:**
+   
+   **Using PuTTY (Windows):**
+   ```
+   1. Download PuTTY from: https://www.putty.org/
+   2. Launch PuTTY
+   3. Configuration:
+      - Host Name: [IP address found above] or bathyimager.local
+      - Port: 22
+      - Connection Type: SSH
+   4. Click "Open"
+   5. Security Alert: Click "Accept" (first time only)
+   6. Login credentials:
+      - Username: bathyimager (or your custom username)
+      - Password: bathyimager (or your custom password)
+   ```
+   
+   **Using Windows PowerShell/Command Prompt:**
+   ```powershell
+   # Windows 10/11 has built-in SSH client
+   ssh bathyimager@192.168.1.100    # Replace with actual IP
+   # OR try hostname resolution
+   ssh bathyimager@bathyimager.local
+   # OR fallback to default if not changed
    ssh pi@raspberrypi.local
+   ```
    
-   # Change default password
+   **Using Linux/macOS Terminal:**
+   ```bash
+   # Standard SSH command
+   ssh bathyimager@192.168.1.100    # Replace with actual IP
+   # OR try hostname resolution  
+   ssh bathyimager@bathyimager.local
+   ```
+
+   **Initial System Setup:**
+   ```bash
+   # After successful SSH connection:
+   
+   # If using custom username/password (bathyimager), you can optionally change it again
    passwd
+   # Enter new password when prompted (twice for confirmation)
    
-   # Update system
+   # If using default pi/raspberry credentials, CHANGE PASSWORD IMMEDIATELY:
+   passwd
+   # Enter new secure password
+   
+   # Update system packages
    sudo apt update && sudo apt upgrade -y
    
-   # Enable interfaces
+   # Enable required interfaces
    sudo raspi-config
    # Navigate to: Interface Options > Camera > Enable
    # Navigate to: Interface Options > Serial Port > Enable
-   # Reboot when prompted
+   # Navigate to: Interface Options > SSH > Enable (should already be enabled)
+   # Select "Finish" and reboot when prompted
+   
+   # System will reboot - reconnect after ~2 minutes
    ```
 
+   **Troubleshooting SSH Connection:**
+   
+   **If using custom username/password (bathyimager/bathyimager):**
+   - Try both the hostname: `ssh bathyimager@bathyimager.local`
+   - And the IP address: `ssh bathyimager@192.168.1.100`
+   - Ensure you're using YOUR custom credentials, not pi/raspberry
+   
+   **If using default credentials or fallback:**
+   - Username: `pi`, Password: `raspberry`
+   - Try: `ssh pi@raspberrypi.local`
+   
+   **Common Issues:**
+   - **Wrong credentials**: Double-check username/password you set in Raspberry Pi Imager
+   - **Hostname not resolving**: Use IP address instead of .local hostname
+   - **WiFi connection failed**: Check router's connected devices list
+   - **SSH not enabled**: If using manual setup, verify SSH file exists on boot partition
+   
+   **If connection is refused:**
+   - Wait longer (Pi might still be booting)
+   - Check Pi's power LED (should be solid red when fully booted)
+   - Verify Pi appears in router's device list
+   
+   **If login fails:**
+   - Verify the exact username/password you configured in Raspberry Pi Imager
+   - Username and password are case-sensitive
+   - Try default pi/raspberry if you didn't change credentials
+
 ---
+
+### SSH Connection Troubleshooting
+
+**Important Note: Custom Username Configuration**
+
+If you changed the default username from `pi` to `bathyimager` (or another custom name), you'll need to update several configuration files during the software installation process:
+
+```bash
+# After SSH connection, verify your username
+whoami
+# Should show: bathyimager (or your custom username)
+
+# During software installation, you may need to update:
+# - Service user in systemd files
+# - File ownership commands
+# - Directory permissions
+```
+
+**Problem: Cannot find Raspberry Pi IP address**
+
+Solutions:
+1. **Check router DHCP reservations**: Many routers allow you to reserve IP addresses for specific MAC addresses
+2. **Use Raspberry Pi IP Scanner**: Download "Angry IP Scanner" or similar network scanning tool
+3. **Check Pi is actually connected**: 
+   - Ethernet: Look for link lights on Pi and switch/router
+   - WiFi: Check router's wireless client list
+
+**Problem: "Connection refused" or "Host unreachable"**
+
+Solutions:
+1. **Verify SSH is enabled**: 
+   ```bash
+   # Check if SSH file exists on SD card boot partition
+   ls /boot/ssh  # Should exist and be empty
+   ```
+2. **Wait for full boot**: Pi needs 1-2 minutes to fully boot and start SSH service
+3. **Check network connectivity**:
+   ```bash
+   # From your computer, ping the Pi
+   ping 192.168.1.100  # Replace with Pi's IP
+   ```
+
+**Problem: "Permission denied" or login failures**
+
+Solutions:
+1. **Verify credentials**:
+   - Default username: `pi` (lowercase)
+   - Default password: `raspberry` (lowercase)
+   - Both are case-sensitive
+2. **SSH keys conflict** (if you've used SSH keys before):
+   ```bash
+   # Remove old host key entry
+   ssh-keygen -R raspberrypi.local
+   ssh-keygen -R 192.168.1.100  # Replace with actual IP
+   ```
+
+**Problem: PuTTY-specific issues**
+
+Solutions:
+1. **Font/Display issues**: Use default settings, avoid unusual fonts
+2. **Connection hanging**: Check firewall settings on Windows
+3. **Key exchange failures**: 
+   - In PuTTY, go to Connection > SSH > KEX
+   - Move "diffie-hellman-group14-sha1" to top of list
+
+**Recommended PuTTY Configuration:**
+```
+Connection > Data:
+- Auto-login username: pi
+- Terminal-type string: xterm
+
+Connection > SSH:
+- SSH protocol version: 2 only
+- Enable compression: Yes
+
+Session:
+- Save session as "BathyCat-Pi" for future use
+```
 
 ## Hardware Assembly
 
@@ -121,9 +405,9 @@ This guide provides step-by-step instructions for setting up the BathyCat Seabed
    - Carefully attach GPS HAT to GPIO pins
    - Ensure proper alignment and connection
 
-2. **Connect SSD Storage**
-   - Connect SSD to USB 3.0 port (blue port)
-   - Ensure secure connection
+2. **Connect USB Storage**
+   - Connect 512GB USB 3.0 flash drive to USB 3.0 port (blue port)
+   - Ensure secure connection and waterproof protection if external
 
 3. **Connect Camera**
    - Connect StellarHD camera to remaining USB 3.0 port
@@ -230,23 +514,23 @@ If automated installation fails, follow these manual steps:
 
 ### 1. Storage Configuration
 
-1. **Mount SSD Storage**
+1. **Mount USB Flash Drive**
    ```bash
-   # Find SSD device
+   # Find USB flash drive device
    lsblk
    
-   # Format SSD (if new)
+   # Format USB drive (if new) - WARNING: This will erase all data
    sudo mkfs.ext4 /dev/sda1
    
    # Create mount point
-   sudo mkdir -p /media/ssd
+   sudo mkdir -p /media/usb-storage
    
    # Get UUID
    sudo blkid /dev/sda1
    
    # Add to fstab
    sudo nano /etc/fstab
-   # Add line: UUID=your-uuid /media/ssd ext4 defaults,noatime 0 2
+   # Add line: UUID=your-uuid /media/usb-storage ext4 defaults,noatime 0 2
    
    # Mount
    sudo mount -a
@@ -254,8 +538,8 @@ If automated installation fails, follow these manual steps:
 
 2. **Create Directory Structure**
    ```bash
-   sudo mkdir -p /media/ssd/bathycat/{images,metadata,previews,logs,exports}
-   sudo chown -R pi:pi /media/ssd/bathycat
+   sudo mkdir -p /media/usb-storage/bathycat/{images,metadata,previews,logs,exports}
+   sudo chown -R pi:pi /media/usb-storage/bathycat
    ```
 
 ### 2. GPS Configuration
@@ -378,12 +662,12 @@ If automated installation fails, follow these manual steps:
 3. **Storage Test**
    ```bash
    # Check storage space
-   df -h /media/ssd
+   df -h /media/usb-storage
    
    # Test write permissions
-   echo "test" > /media/ssd/bathycat/test.txt
-   cat /media/ssd/bathycat/test.txt
-   rm /media/ssd/bathycat/test.txt
+   echo "test" > /media/usb-storage/bathycat/test.txt
+   cat /media/usb-storage/bathycat/test.txt
+   rm /media/usb-storage/bathycat/test.txt
    ```
 
 ### 2. System Integration Test
@@ -509,7 +793,7 @@ If automated installation fails, follow these manual steps:
    "
    
    # Manual data copy
-   rsync -av /media/ssd/bathycat/ user@shore-computer:/path/to/backup/
+   rsync -av /media/usb-storage/bathycat/ user@shore-computer:/path/to/backup/
    ```
 
 2. **Automated Cleanup**
@@ -537,8 +821,8 @@ Common issues and solutions:
    - Test with `v4l2-ctl --list-devices`
 
 3. **Storage Issues**
-   - Check mount status: `mount | grep ssd`
-   - Verify permissions: `ls -la /media/ssd/bathycat`
+   - Check mount status: `mount | grep usb-storage`
+   - Verify permissions: `ls -la /media/usb-storage/bathycat`
    - Check disk space: `df -h`
 
 4. **Service Not Starting**

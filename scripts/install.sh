@@ -179,18 +179,18 @@ configure_camera() {
 setup_storage() {
     print_status "Setting up storage configuration..."
     
-    # Create mount point for SSD
-    mkdir -p /media/ssd
+    # Create mount point for USB storage
+    mkdir -p /media/usb-storage
     
     # Add fstab entry (commented out - requires manual UUID setup)
-    if ! grep -q "/media/ssd" /etc/fstab; then
-        echo "# BathyCat SSD Storage (uncomment and set correct UUID)" >> /etc/fstab
-        echo "# UUID=your-ssd-uuid /media/ssd ext4 defaults,noatime 0 2" >> /etc/fstab
+    if ! grep -q "/media/usb-storage" /etc/fstab; then
+        echo "# BathyCat USB Storage (uncomment and set correct UUID)" >> /etc/fstab
+        echo "# UUID=your-usb-uuid /media/usb-storage ext4 defaults,noatime 0 2" >> /etc/fstab
     fi
     
     # Create BathyCat storage directory structure
-    mkdir -p /media/ssd/bathycat/{images,metadata,previews,logs,exports}
-    chown -R $USER:$USER /media/ssd/bathycat
+    mkdir -p /media/usb-storage/bathycat/{images,metadata,previews,logs,exports}
+    chown -R $USER:$USER /media/usb-storage/bathycat
     
     print_success "Storage setup completed"
 }
@@ -349,7 +349,7 @@ systemctl status bathycat-imager --no-pager -l
 
 echo
 echo "Storage Status:"
-df -h /media/ssd 2>/dev/null || echo "SSD not mounted"
+df -h /media/usb-storage 2>/dev/null || echo "USB storage not mounted"
 
 echo
 echo "GPS Status:"
@@ -453,7 +453,7 @@ run_tests() {
     
     # Test storage
     echo "Testing storage..."
-    if [ -d /media/ssd ]; then
+    if [ -d /media/usb-storage ]; then
         print_success "Storage mount point exists"
     else
         print_warning "Storage mount point missing"
@@ -502,7 +502,7 @@ main() {
     echo
     echo "Next steps:"
     echo "1. Reboot the system: sudo reboot"
-    echo "2. Connect your SSD and update /etc/fstab with correct UUID"
+    echo "2. Connect your USB flash drive and update /etc/fstab with correct UUID"
     echo "3. Connect USB camera and GPS HAT"
     echo "4. Test the system: $INSTALL_DIR/status.sh"
     echo "5. Start the service: sudo systemctl start bathycat-imager"

@@ -293,7 +293,7 @@ journalctl -u bathycat-imager --no-pager -n 20
 
 **Symptoms:**
 - "Storage initialization failed"
-- /media/ssd not accessible
+- /media/usb-storage not accessible
 - Permission denied errors
 
 **Diagnostic Steps:**
@@ -301,13 +301,13 @@ journalctl -u bathycat-imager --no-pager -n 20
 1. **Check Mount Status**
    ```bash
    # Check if mounted
-   mount | grep ssd
+   mount | grep usb-storage
    
    # Check filesystem
    sudo fsck /dev/sda1
    
    # Check fstab entry
-   cat /etc/fstab | grep ssd
+   cat /etc/fstab | grep usb-storage
    ```
 
 **Solutions:**
@@ -315,13 +315,13 @@ journalctl -u bathycat-imager --no-pager -n 20
 1. **Manual Mount**
    ```bash
    # Create mount point
-   sudo mkdir -p /media/ssd
+   sudo mkdir -p /media/usb-storage
    
    # Mount manually
-   sudo mount /dev/sda1 /media/ssd
+   sudo mount /dev/sda1 /media/usb-storage
    
    # Fix permissions
-   sudo chown -R pi:pi /media/ssd
+   sudo chown -R pi:pi /media/usb-storage
    ```
 
 2. **Fstab Configuration**
@@ -330,7 +330,7 @@ journalctl -u bathycat-imager --no-pager -n 20
    sudo blkid /dev/sda1
    
    # Add to fstab
-   echo "UUID=your-uuid /media/ssd ext4 defaults,noatime 0 2" | sudo tee -a /etc/fstab
+   echo "UUID=your-uuid /media/usb-storage ext4 defaults,noatime 0 2" | sudo tee -a /etc/fstab
    
    # Test mount
    sudo mount -a
@@ -348,10 +348,10 @@ journalctl -u bathycat-imager --no-pager -n 20
 1. **Immediate Cleanup**
    ```bash
    # Check space
-   df -h /media/ssd
+   df -h /media/usb-storage
    
    # Manual cleanup
-   sudo find /media/ssd/bathycat/images -type f -mtime +7 -delete
+   sudo find /media/usb-storage/bathycat/images -type f -mtime +7 -delete
    
    # Clear logs
    sudo journalctl --vacuum-time=2d
@@ -443,7 +443,7 @@ journalctl -u bathycat-imager --no-pager -n 20
    {
      "capture_fps": 4.0,           // Must be positive number
      "camera_device_id": 0,        // Check with v4l2-ctl --list-devices
-     "storage_base_path": "/media/ssd/bathycat",  // Must exist
+     "storage_base_path": "/media/usb-storage/bathycat",  // Must exist
      "gps_port": "/dev/serial0"    // Check if exists
    }
    ```

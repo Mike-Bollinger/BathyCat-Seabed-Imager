@@ -78,7 +78,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectHome=yes
 ProtectSystem=strict
-ReadWritePaths=$LOG_DIR /media/ssd
+ReadWritePaths=$LOG_DIR /media/usb-storage
 
 [Install]
 WantedBy=multi-user.target
@@ -384,8 +384,8 @@ else
 fi
 
 # Storage
-if mountpoint -q /media/ssd; then
-    STORAGE_FREE=$(df -h /media/ssd | awk 'NR==2 {print $4}')
+if mountpoint -q /media/usb-storage; then
+    STORAGE_FREE=$(df -h /media/usb-storage | awk 'NR==2 {print $4}')
     echo "✓ Storage: MOUNTED ($STORAGE_FREE free)"
 else
     echo "✗ Storage: NOT MOUNTED"

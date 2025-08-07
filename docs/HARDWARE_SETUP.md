@@ -23,7 +23,7 @@ This guide covers the physical assembly and configuration of the BathyCat Seabed
 |-----------|---------------|---------|
 | **Raspberry Pi 4 Model B (4GB)** | ARM Cortex-A72, 4GB RAM, USB 3.0 | Main processing unit |
 | **StellarHD USB Camera** | 1080p@30fps, USB 3.0, IP67 rated | Underwater imaging |
-| **512GB SSD Kit** | USB 3.0 SATA adapter, 512GB capacity | High-speed storage |
+| **512GB USB 3.0 Flash Drive** | USB 3.0 interface, 512GB capacity | High-speed storage |
 | **Adafruit Ultimate GPS HAT** | GPS/GLONASS, PPS output, battery backup | Position and time sync |
 
 ### Supporting Hardware
@@ -82,18 +82,18 @@ This guide covers the physical assembly and configuration of the BathyCat Seabed
 
 ### Step 3: Storage Connection
 
-1. **SSD Preparation**
+1. **USB Flash Drive Preparation**
    ```
-   - Remove SSD from packaging
-   - Connect to USB 3.0 SATA adapter
-   - Ensure SATA connections are secure
+   - Remove USB flash drive from packaging
+   - Ensure it's rated for USB 3.0 operation
+   - Check for any physical damage
    ```
 
 2. **USB Connection**
    ```
-   - Connect SSD adapter to USB 3.0 port (blue port)
-   - Use shorter USB cable to minimize power loss
-   - Secure cable to prevent disconnection during operation
+   - Connect USB flash drive to USB 3.0 port (blue port)
+   - Use shorter USB cable or direct connection to minimize power loss
+   - Secure connection to prevent disconnection during operation
    ```
 
 ### Step 4: Camera Connection
@@ -186,8 +186,8 @@ This guide covers the physical assembly and configuration of the BathyCat Seabed
 | Raspberry Pi 4 | 2.5A @ 5V | 3.0A @ 5V |
 | GPS HAT | 0.1A @ 5V | 0.2A @ 5V |
 | StellarHD Camera | 0.5A @ 5V | 0.8A @ 5V |
-| SSD Storage | 0.3A @ 5V | 0.5A @ 5V |
-| **Total System** | **3.4A @ 5V** | **4.5A @ 5V** |
+| USB Flash Drive | 0.2A @ 5V | 0.4A @ 5V |
+| **Total System** | **3.3A @ 5V** | **4.4A @ 5V** |
 
 ### Backup Power (Optional)
 
@@ -324,7 +324,7 @@ This guide covers the physical assembly and configuration of the BathyCat Seabed
 
 ## Storage Setup
 
-### SSD Configuration
+### USB Flash Drive Configuration
 
 1. **Filesystem Selection**
    ```
@@ -338,7 +338,7 @@ This guide covers the physical assembly and configuration of the BathyCat Seabed
 2. **Mount Options**
    ```bash
    # Optimal mount options for imaging
-   UUID=your-ssd-uuid /media/ssd ext4 defaults,noatime,commit=60 0 2
+   UUID=your-usb-uuid /media/usb-storage ext4 defaults,noatime,commit=60 0 2
    
    # noatime: Improves write performance
    # commit=60: Reduces sync frequency
@@ -347,7 +347,7 @@ This guide covers the physical assembly and configuration of the BathyCat Seabed
 ### Directory Structure
 
 ```
-/media/ssd/bathycat/
+/media/usb-storage/bathycat/
 ├── images/          # Main image storage
 │   ├── 20250805_08/ # Session directories (YYYYMMDD_HH)
 │   ├── 20250805_09/
@@ -362,7 +362,7 @@ This guide covers the physical assembly and configuration of the BathyCat Seabed
 
 1. **Write Performance**
    ```bash
-   # Check SSD performance
+   # Check USB drive performance
    sudo hdparm -t /dev/sda1
    
    # Optimize for sequential writes

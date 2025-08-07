@@ -4,13 +4,13 @@ A complete underwater imaging system for the Raspberry Pi 4, designed to capture
 
 ## System Overview
 
-This system captures seabed images using a USB camera, tags them with GPS coordinates and precise timestamps, and stores them on local SSD storage for later retrieval.
+This system captures seabed images using a USB camera, tags them with GPS coordinates and precise timestamps, and stores them on local USB storage for later retrieval.
 
 ### Hardware Components
 
 - **Raspberry Pi 4 Model B (4GB)** - Main processing unit
 - **StellarHD USB Camera** - Underwater imaging (1080p@30fps capable)
-- **512GB SSD Kit** - High-speed local storage
+- **512GB USB 3.0 Flash Drive** - High-speed local storage
 - **Adafruit Ultimate GPS HAT** - GPS positioning and time sync
 - **Waterproof housing** - Protection for Pi and connections
 
@@ -25,7 +25,7 @@ This system captures seabed images using a USB camera, tags them with GPS coordi
 
 ## Quick Start
 
-1. **Hardware Setup**: Connect camera, GPS HAT, and SSD
+1. **Hardware Setup**: Connect camera, GPS HAT, and USB storage
 2. **OS Installation**: Flash Raspberry Pi OS Lite (64-bit)
 3. **Software Setup**: Run the automated installation script
 4. **Configuration**: Set capture parameters and storage paths
@@ -71,7 +71,7 @@ BathyCat-Seabed-Imager/
 - Raspberry Pi 4 Model B (4GB recommended)
 - Raspberry Pi OS Lite (64-bit) - Bullseye or later
 - 32GB+ microSD card (for OS)
-- 512GB SSD (for image storage)
+- 512GB USB 3.0 Flash Drive (for image storage)
 - USB 3.0 camera (StellarHD or compatible)
 - GPS HAT with PPS support
 

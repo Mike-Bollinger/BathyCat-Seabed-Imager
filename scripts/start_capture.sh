@@ -95,15 +95,15 @@ check_hardware() {
     fi
     
     # Check storage
-    if [ -d "/media/ssd" ]; then
-        if mountpoint -q /media/ssd; then
-            STORAGE_FREE=$(df -h /media/ssd 2>/dev/null | awk 'NR==2 {print $4}')
+    if [ -d "/media/usb-storage" ]; then
+        if mountpoint -q /media/usb-storage; then
+            STORAGE_FREE=$(df -h /media/usb-storage 2>/dev/null | awk 'NR==2 {print $4}')
             print_success "Storage mounted ($STORAGE_FREE free)"
         else
             print_warning "Storage directory exists but not mounted"
         fi
     else
-        print_warning "Storage mount point not found (/media/ssd)"
+        print_warning "Storage mount point not found (/media/usb-storage)"
         print_warning "Images will be stored on SD card"
     fi
     
@@ -243,8 +243,8 @@ show_status() {
     echo "Memory: $MEM_INFO"
     
     # Storage
-    if mountpoint -q /media/ssd 2>/dev/null; then
-        STORAGE_INFO=$(df -h /media/ssd | tail -1)
+    if mountpoint -q /media/usb-storage 2>/dev/null; then
+        STORAGE_INFO=$(df -h /media/usb-storage | tail -1)
         echo "Storage: $STORAGE_INFO"
     else
         ROOT_INFO=$(df -h / | tail -1)

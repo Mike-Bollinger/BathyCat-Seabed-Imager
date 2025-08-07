@@ -158,7 +158,7 @@ cython_debug/
 *.png
 *.bmp
 *.tiff
-/media/ssd/bathycat/
+/media/usb-storage/bathycat/
 /tmp/test_bathycat*
 /var/log/bathycat/
 test_image.jpg

@@ -346,9 +346,9 @@ def run_hardware_tests():
     
     # Storage Hardware Test
     try:
-        if os.path.exists('/media/ssd'):
+        if os.path.exists('/media/usb-storage'):
             import shutil
-            total, used, free = shutil.disk_usage('/media/ssd')
+            total, used, free = shutil.disk_usage('/media/usb-storage')
             print(f"✓ Storage accessible: {free // (1024**3)}GB free")
         else:
             print("✗ Storage mount point not found")
