@@ -1,0 +1,100 @@
+#!/bin/bash
+"""
+BathyCat Seabed Imager - Quick Update Script
+============================================
+
+Simple script to update the BathyCat system from GitHub.
+Just run: ./update
+
+Author: Mike Bollinger
+Date: August 2025
+"""
+
+set -e  # Exit on any error
+
+echo "🚀 BathyCat Seabed Imager - Quick Update"
+echo "========================================"
+
+# Check if we're in the right directory
+if [ ! -f "src/bathycat_imager.py" ]; then
+    echo "❌ Error: Not in BathyCat project directory"
+    echo "   Please run this script from the project root"
+    exit 1
+fi
+
+# Stop any running services
+echo "🛑 Stopping services..."
+sudo systemctl stop bathycat-imager 2>/dev/null && echo "   Service stopped" || echo "   No service running"
+
+# Backup configuration
+echo "💾 Backing up configuration..."
+if [ -f "config/bathycat_config.json" ]; then
+    cp config/bathycat_config.json config/bathycat_config.json.backup
+    echo "   Configuration backed up"
+else
+    echo "   No configuration found"
+fi
+
+# Show current version
+echo "📍 Current version:"
+git log --oneline -1
+
+# Fetch and show what's new
+echo "🔍 Checking for updates..."
+git fetch origin
+NEW_COMMITS=$(git log --oneline HEAD..origin/main | wc -l)
+
+if [ "$NEW_COMMITS" -eq 0 ]; then
+    echo "✅ Already up to date!"
+    
+    # Restore service if it was running
+    sudo systemctl start bathycat-imager 2>/dev/null && echo "   Service restarted" || true
+    exit 0
+fi
+
+echo "📥 Found $NEW_COMMITS new updates:"
+git log --oneline HEAD..origin/main
+
+# Pull updates
+echo "⬇️  Pulling updates..."
+git pull origin main
+
+# Update dependencies
+echo "📦 Updating dependencies..."
+pip3 install -r requirements.txt --user --quiet
+
+# Restore configuration
+echo "🔧 Restoring configuration..."
+if [ -f "config/bathycat_config.json.backup" ]; then
+    cp config/bathycat_config.json.backup config/bathycat_config.json
+    echo "   Configuration restored"
+fi
+
+# Fix permissions
+echo "🔒 Fixing permissions..."
+chmod +x scripts/*.sh
+chmod +x update
+
+# Show new version
+echo "🎉 Updated to:"
+git log --oneline -1
+
+# Test the update
+echo "🧪 Testing update..."
+if python3 -c "import sys; sys.path.append('src'); from bathycat_imager import BathyCatImager; print('✅ Main app loads successfully')"; then
+    echo "   App test passed"
+else
+    echo "❌ App test failed - check for errors"
+fi
+
+# Restart service
+echo "🚀 Starting services..."
+sudo systemctl start bathycat-imager 2>/dev/null && echo "   Service started" || echo "   Manual start required"
+
+echo ""
+echo "✨ Update complete!"
+echo "   You can now run:"
+echo "   • python3 src/bathycat_imager.py"
+echo "   • python3 tests/test_camera_capture.py --usb-only"
+echo ""
+echo "   To check status: sudo systemctl status bathycat-imager"
