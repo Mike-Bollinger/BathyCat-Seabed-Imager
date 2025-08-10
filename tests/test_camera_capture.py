@@ -20,28 +20,9 @@ from pathlib import Path
 
 class CameraTest:
     def __init__(self, output_dir=None, fps=2, duration=30):
-        # Default to USB storage locations if not specified
+        # Force USB storage usage if not specified
         if output_dir is None:
-            usb_paths = [
-                "/media/usb-storage/bathycat/test_images",
-                "/media/bathycat/test_images", 
-                "/mnt/usb/bathycat/test_images",
-                "./test_images"  # Fallback to local directory
-            ]
-            
-            # Find first available USB storage path
-            self.output_dir = None
-            for path in usb_paths:
-                parent = Path(path).parent
-                if parent.exists() and parent.is_dir():
-                    self.output_dir = Path(path)
-                    print(f"Using USB storage: {self.output_dir}")
-                    break
-            
-            # Use fallback if no USB storage found
-            if self.output_dir is None:
-                self.output_dir = Path("./test_images")
-                print(f"⚠️  No USB storage found, using local: {self.output_dir}")
+            self.output_dir = self._find_usb_storage()
         else:
             self.output_dir = Path(output_dir)
             
@@ -62,6 +43,88 @@ class CameraTest:
         print(f"Target FPS: {fps}")
         print(f"Test duration: {duration} seconds")
         print()
+        
+    def _find_usb_storage(self):
+        """Find USB storage and create directory if needed"""
+        import subprocess
+        import os
+        
+        print("🔍 Searching for USB storage...")
+        
+        # Priority order for USB storage locations
+        usb_candidates = [
+            "/media/usb-storage",
+            "/media/bathycat", 
+            "/mnt/usb",
+            "/media/pi",  # Default Pi automount location
+        ]
+        
+        # Also check for any mounted USB devices
+        try:
+            result = subprocess.run(['mount'], capture_output=True, text=True)
+            mount_lines = result.stdout.split('\n')
+            for line in mount_lines:
+                if 'usb' in line.lower() or '/dev/sd' in line:
+                    # Extract mount point
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        mount_point = parts[2]
+                        usb_candidates.insert(0, mount_point)  # Add to front of list
+        except:
+            pass
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_candidates = []
+        for path in usb_candidates:
+            if path not in seen:
+                unique_candidates.append(path)
+                seen.add(path)
+        
+        # Test each candidate
+        for mount_point in unique_candidates:
+            mount_path = Path(mount_point)
+            if mount_path.exists() and mount_path.is_dir():
+                # Try to create bathycat directory
+                bathycat_dir = mount_path / "bathycat" / "test_images"
+                try:
+                    bathycat_dir.mkdir(parents=True, exist_ok=True)
+                    # Test write permissions
+                    test_file = bathycat_dir / ".write_test"
+                    test_file.write_text("test")
+                    test_file.unlink()
+                    
+                    print(f"✅ Found USB storage: {bathycat_dir}")
+                    
+                    # Check available space
+                    result = subprocess.run(['df', '-h', str(mount_path)], 
+                                          capture_output=True, text=True)
+                    if result.returncode == 0:
+                        lines = result.stdout.strip().split('\n')
+                        if len(lines) >= 2:
+                            space_info = lines[1].split()
+                            if len(space_info) >= 4:
+                                print(f"📊 Available space: {space_info[3]}")
+                    
+                    return bathycat_dir
+                    
+                except PermissionError:
+                    print(f"❌ Permission denied: {mount_point}")
+                except Exception as e:
+                    print(f"❌ Cannot use {mount_point}: {e}")
+        
+        # If no USB storage found, error out instead of using local
+        print("❌ ERROR: No accessible USB storage found!")
+        print("Please ensure:")
+        print("1. USB storage device is plugged in")
+        print("2. USB storage is mounted (check with 'lsblk' and 'df -h')")
+        print("3. You have write permissions to the USB device")
+        print("\nTry manually mounting:")
+        print("sudo mkdir -p /media/usb-storage")
+        print("sudo mount /dev/sda1 /media/usb-storage  # Replace sda1 with your device")
+        print("sudo chown -R bathyimager:bathyimager /media/usb-storage")
+        
+        raise RuntimeError("USB storage required but not found")
 
     def find_camera(self):
         """Find available camera devices"""
@@ -276,6 +339,8 @@ def main():
                         help='Target frames per second (default: 2.0)')
     parser.add_argument('--output', type=str, default='./test_images',
                         help='Output directory (default: ./test_images)')
+    parser.add_argument('--usb-only', action='store_true',
+                        help='Force USB storage usage (error if USB not available)')
     
     args = parser.parse_args()
     
@@ -292,7 +357,8 @@ def main():
     test = CameraTest(
         output_dir=args.output,
         fps=args.fps,
-        duration=args.duration
+        duration=args.duration,
+        usb_only=args.usb_only
     )
     
     try:
