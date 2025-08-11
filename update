@@ -4,13 +4,50 @@ BathyCat Seabed Imager - Quick Update Script
 ============================================
 
 Simple script to update the BathyCat system from GitHub.
-Just run: ./update
+
+Usage: 
+  ./update           - Interactive update with conflict resolution
+  ./update --force   - Force reset to remote version (discards local changes)
+  ./update --stash   - Auto-stash local changes and pull
 
 Author: Mike Bollinger
 Date: August 2025
 """
 
 set -e  # Exit on any error
+
+# Parse command line arguments
+FORCE_MODE=false
+STASH_MODE=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --force)
+            FORCE_MODE=true
+            shift
+            ;;
+        --stash)
+            STASH_MODE=true
+            shift
+            ;;
+        --help|-h)
+            echo "BathyCat Update Script"
+            echo ""
+            echo "Usage:"
+            echo "  ./update           - Interactive update"
+            echo "  ./update --force   - Force reset to remote (loses local changes)"
+            echo "  ./update --stash   - Auto-stash and pull"
+            echo "  ./update --help    - Show this help"
+            echo ""
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
 
 echo "🚀 BathyCat Seabed Imager - Quick Update"
 echo "========================================"
@@ -55,13 +92,91 @@ fi
 echo "📥 Found $NEW_COMMITS new updates:"
 git log --oneline HEAD..origin/main
 
-# Pull updates
+# Pull updates with conflict resolution
 echo "⬇️  Pulling updates..."
-git pull origin main
+
+# Check if we have local changes that would conflict
+LOCAL_CHANGES=$(git status --porcelain 2>/dev/null)
+if [ -n "$LOCAL_CHANGES" ]; then
+    echo "⚠️  Local changes detected:"
+    git status --short
+    echo ""
+    
+    # Handle based on mode
+    if [ "$FORCE_MODE" = true ]; then
+        echo "🚨 Force mode: Discarding local changes..."
+        git reset --hard origin/main
+        echo "✅ Reset complete - all local changes discarded"
+    elif [ "$STASH_MODE" = true ]; then
+        echo "📦 Stash mode: Stashing local changes..."
+        git stash push -m "Auto-stash before update $(date '+%Y-%m-%d %H:%M:%S')"
+        git pull origin main
+        echo "🔄 Attempting to restore local changes..."
+        if git stash pop; then
+            echo "✅ Local changes restored successfully"
+        else
+            echo "⚠️  Merge conflicts detected - please resolve manually"
+            echo "   Your changes are still in git stash"
+            echo "   Run: git stash list"
+            echo "   Run: git stash show stash@{0}"
+        fi
+    else
+        # Interactive mode
+        echo "Update options:"
+        echo "1. 🔄 Stash local changes and apply remote updates (RECOMMENDED)"
+        echo "2. 🚨 Force reset to remote version (LOSE local changes)"  
+        echo "3. 🛑 Cancel update"
+        echo ""
+        read -p "Choose option (1-3): " choice
+        
+        case $choice in
+            1)
+                echo "📦 Stashing local changes..."
+                git stash push -m "Auto-stash before update $(date '+%Y-%m-%d %H:%M:%S')"
+                git pull origin main
+                echo "🔄 Attempting to restore local changes..."
+                if git stash pop; then
+                    echo "✅ Local changes restored successfully"
+                else
+                    echo "⚠️  Merge conflicts detected - please resolve manually"
+                    echo "   Your changes are still in git stash"
+                    echo "   Run: git stash list"
+                    echo "   Run: git stash show stash@{0}"
+                fi
+                ;;
+            2)
+                echo "🚨 Force resetting to remote version..."
+                git reset --hard origin/main
+                echo "✅ Reset complete - all local changes discarded"
+                ;;
+            3)
+                echo "🛑 Update cancelled"
+                sudo systemctl start bathycat-imager 2>/dev/null || true
+                exit 0
+                ;;
+            *)
+                echo "❌ Invalid choice - cancelling update"
+                sudo systemctl start bathycat-imager 2>/dev/null || true
+                exit 1
+                ;;
+        esac
+    fi
+else
+    # No local changes, normal pull
+    git pull origin main
+fi
 
 # Update dependencies
 echo "📦 Updating dependencies..."
-pip3 install -r requirements.txt --user --quiet
+if pip3 install -r requirements.txt --user --quiet 2>/dev/null; then
+    echo "   Dependencies updated successfully"
+elif pip3 install -r requirements.txt --user --break-system-packages --quiet 2>/dev/null; then
+    echo "   Dependencies updated (with system override)"
+else
+    echo "⚠️  Could not update dependencies automatically"
+    echo "   You may need to install manually:"
+    echo "   pip3 install -r requirements.txt --user --break-system-packages"
+fi
 
 # Restore configuration
 echo "🔧 Restoring configuration..."
