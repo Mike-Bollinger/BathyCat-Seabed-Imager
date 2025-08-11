@@ -78,33 +78,91 @@ check_prerequisites() {
 check_hardware() {
     print_status "Checking hardware components..."
     
-    # Check GPS
-    if [ -e /dev/serial0 ]; then
-        print_success "GPS serial port detected"
-    else
-        print_warning "GPS serial port not found (/dev/serial0)"
-        print_warning "GPS functionality may not work"
+    # Check USB GPS using updated detection
+    print_status "Checking for USB GPS module..."
+    GPS_FOUND=false
+    
+    # Check for USB GPS devices
+    if lsusb | grep -i "GlobalSat\|u-blox\|GPS\|PA1010D" >/dev/null 2>&1; then
+        print_success "USB GPS module detected via lsusb"
+        GPS_FOUND=true
+    fi
+    
+    # Check for serial ports that might be GPS
+    if ls /dev/ttyACM* /dev/ttyUSB* >/dev/null 2>&1; then
+        print_success "USB serial ports detected for GPS"
+        ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null | while read device; do
+            echo "  Found: $device"
+        done
+        GPS_FOUND=true
+    fi
+    
+    if [ "$GPS_FOUND" = false ]; then
+        # Fallback: check legacy serial port
+        if [ -e /dev/serial0 ]; then
+            print_warning "Using legacy GPIO serial port (/dev/serial0)"
+            GPS_FOUND=true
+        else
+            print_warning "No GPS device detected"
+            print_warning "GPS functionality may not work"
+        fi
     fi
     
     # Check camera
     if lsusb | grep -qi camera; then
-        print_success "USB camera detected"
+        print_success "USB camera detected via lsusb"
+    elif ls /dev/video* >/dev/null 2>&1; then
+        CAMERA_DEV=$(ls /dev/video* | head -1)
+        print_success "Camera device found: $CAMERA_DEV"
     else
-        print_warning "No USB camera detected"
+        print_warning "No camera devices detected"
         print_warning "Camera functionality may not work"
     fi
     
-    # Check storage
-    if [ -d "/media/usb-storage" ]; then
-        if mountpoint -q /media/usb-storage; then
-            STORAGE_FREE=$(df -h /media/usb-storage 2>/dev/null | awk 'NR==2 {print $4}')
-            print_success "Storage mounted ($STORAGE_FREE free)"
-        else
-            print_warning "Storage directory exists but not mounted"
+    # Enhanced USB storage detection
+    print_status "Checking for USB storage..."
+    STORAGE_FOUND=false
+    
+    # Check common mount points
+    USB_MOUNTS=(
+        "/media/usb-storage"
+        "/media/bathycat"
+        "/media/bathyimager"
+        "/mnt/usb"
+    )
+    
+    for mount_point in "${USB_MOUNTS[@]}"; do
+        if [ -d "$mount_point" ] && mountpoint -q "$mount_point" 2>/dev/null; then
+            STORAGE_FREE=$(df -h "$mount_point" 2>/dev/null | awk 'NR==2 {print $4}')
+            FILESYSTEM=$(df -T "$mount_point" 2>/dev/null | awk 'NR==2 {print $2}')
+            print_success "USB storage mounted at $mount_point ($STORAGE_FREE free, $FILESYSTEM)"
+            STORAGE_FOUND=true
+            
+            # Check BathyCat directory structure
+            BATHYCAT_DIR="$mount_point/bathycat"
+            if [ -d "$BATHYCAT_DIR" ]; then
+                print_success "BathyCat directory structure exists"
+            else
+                print_warning "BathyCat directory structure missing"
+                print_status "Creating directory structure..."
+                mkdir -p "$BATHYCAT_DIR"/{images,metadata,previews,logs,exports}
+                print_success "Directory structure created"
+            fi
+            break
         fi
-    else
-        print_warning "Storage mount point not found (/media/usb-storage)"
-        print_warning "Images will be stored on SD card"
+    done
+    
+    if [ "$STORAGE_FOUND" = false ]; then
+        # Check for any USB devices
+        if lsblk | grep -E "sd[a-z]" | grep -v "disk" >/dev/null 2>&1; then
+            print_warning "USB storage detected but not mounted"
+            echo "Available USB devices:"
+            lsblk | grep -E "sd[a-z]" | head -5
+            print_warning "Run setup_usb_storage.sh to configure USB storage"
+        else
+            print_warning "No USB storage detected"
+            print_warning "Images will be stored on SD card"
+        fi
     fi
     
     print_success "Hardware check completed"
@@ -161,37 +219,97 @@ check_services() {
 
 # Function to test GPS
 test_gps() {
-    print_status "Testing GPS functionality..."
+    print_status "Testing USB GPS functionality..."
     
-    if command -v gpspipe >/dev/null 2>&1; then
-        print_status "Checking for GPS data (10 second timeout)..."
+    # First check for USB GPS devices
+    GPS_DEVICE=""
+    
+    # Try to detect USB GPS device
+    if ls /dev/ttyACM* >/dev/null 2>&1; then
+        for device in /dev/ttyACM*; do
+            print_status "Testing GPS device: $device"
+            # Try to read NMEA data directly
+            if timeout 5 cat "$device" 2>/dev/null | grep -q "^\$G"; then
+                GPS_DEVICE="$device"
+                print_success "USB GPS responding on $device"
+                break
+            fi
+        done
+    fi
+    
+    # Try ttyUSB devices if ACM didn't work
+    if [ -z "$GPS_DEVICE" ] && ls /dev/ttyUSB* >/dev/null 2>&1; then
+        for device in /dev/ttyUSB*; do
+            print_status "Testing GPS device: $device"
+            if timeout 5 cat "$device" 2>/dev/null | grep -q "^\$G"; then
+                GPS_DEVICE="$device"
+                print_success "USB GPS responding on $device"
+                break
+            fi
+        done
+    fi
+    
+    if [ -n "$GPS_DEVICE" ]; then
+        print_status "Reading GPS data from $GPS_DEVICE..."
         
-        if timeout 10 gpspipe -r -n 5 >/dev/null 2>&1; then
-            print_success "GPS data received"
+        # Read a few NMEA sentences
+        GPS_DATA=$(timeout 10 cat "$GPS_DEVICE" 2>/dev/null | head -5)
+        if [ -n "$GPS_DATA" ]; then
+            print_success "GPS NMEA data received:"
+            echo "$GPS_DATA" | while IFS= read -r line; do
+                if [[ "$line" =~ ^\$G ]]; then
+                    echo "  $line"
+                fi
+            done
             
-            # Try to get a position
-            print_status "Checking GPS fix status..."
-            GPS_FIX=$(timeout 10 gpspipe -w -n 1 2>/dev/null | grep -o '"mode":[0-9]' | cut -d: -f2)
-            
-            case "$GPS_FIX" in
-                "3")
-                    print_success "GPS has 3D fix"
-                    ;;
-                "2")
-                    print_success "GPS has 2D fix"
-                    ;;
-                "1")
-                    print_warning "GPS sees satellites but no fix yet"
-                    ;;
-                *)
-                    print_warning "GPS fix status unknown"
-                    ;;
-            esac
+            # Check for fix status in GGA sentences
+            if echo "$GPS_DATA" | grep -q "\$G.GGA.*,[0-9]\+\.[0-9]\+,[NS],[0-9]\+\.[0-9]\+,[EW]"; then
+                print_success "GPS appears to have position fix"
+            else
+                print_warning "GPS receiving data but no position fix yet"
+                print_status "This is normal - GPS needs clear sky view and time to acquire satellites"
+            fi
         else
-            print_warning "No GPS data received (antenna or fix issue)"
+            print_warning "GPS device found but no NMEA data received"
         fi
     else
-        print_warning "GPS tools not installed"
+        # Fallback to gpspipe if available
+        if command -v gpspipe >/dev/null 2>&1; then
+            print_status "Testing GPS with gpspipe (10 second timeout)..."
+            
+            if timeout 10 gpspipe -r -n 5 >/dev/null 2>&1; then
+                print_success "GPS data received via gpsd"
+                
+                # Try to get a position
+                print_status "Checking GPS fix status..."
+                GPS_FIX=$(timeout 10 gpspipe -w -n 1 2>/dev/null | grep -o '"mode":[0-9]' | cut -d: -f2)
+                
+                case "$GPS_FIX" in
+                    "3")
+                        print_success "GPS has 3D fix"
+                        ;;
+                    "2")
+                        print_success "GPS has 2D fix"
+                        ;;
+                    "1")
+                        print_warning "GPS sees satellites but no fix yet"
+                        ;;
+                    *)
+                        print_warning "GPS fix status unknown"
+                        ;;
+                esac
+            else
+                print_warning "No GPS data received via gpsd"
+            fi
+        else
+            print_warning "No GPS device responding and gpspipe not available"
+            print_status "GPS troubleshooting tips:"
+            echo "  1. Ensure USB GPS module is connected"
+            echo "  2. Check USB connection: lsusb | grep -i gps"
+            echo "  3. Test devices manually: ls /dev/ttyACM* /dev/ttyUSB*"
+            echo "  4. For GPS fix: ensure clear view of sky"
+            echo "  5. Run: python3 tests/test_gps_debug.py"
+        fi
     fi
 }
 
@@ -242,14 +360,23 @@ show_status() {
     MEM_INFO=$(free -h | grep '^Mem:')
     echo "Memory: $MEM_INFO"
     
-    # Storage
-    if mountpoint -q /media/usb-storage 2>/dev/null; then
-        STORAGE_INFO=$(df -h /media/usb-storage | tail -1)
-        echo "Storage: $STORAGE_INFO"
-    else
+    # Storage - check multiple possible mount points
+    STORAGE_STATUS="Not found"
+    for mount_point in "/media/usb-storage" "/media/bathycat" "/media/bathyimager" "/mnt/usb"; do
+        if mountpoint -q "$mount_point" 2>/dev/null; then
+            STORAGE_INFO=$(df -h "$mount_point" | tail -1)
+            FILESYSTEM=$(df -T "$mount_point" | tail -1 | awk '{print $2}')
+            STORAGE_STATUS="$mount_point ($FILESYSTEM): $STORAGE_INFO"
+            break
+        fi
+    done
+    
+    if [ "$STORAGE_STATUS" = "Not found" ]; then
         ROOT_INFO=$(df -h / | tail -1)
-        echo "Root FS: $ROOT_INFO"
+        STORAGE_STATUS="Root FS: $ROOT_INFO"
     fi
+    
+    echo "Storage: $STORAGE_STATUS"
     
     echo "----------------------------------------"
 }
@@ -269,7 +396,14 @@ start_application() {
     
     # Create log directory if it doesn't exist
     sudo mkdir -p "$LOG_DIR"
-    sudo chown pi:pi "$LOG_DIR"
+    
+    # Set ownership based on current user or bathyimager
+    if id "bathyimager" >/dev/null 2>&1; then
+        sudo chown bathyimager:bathyimager "$LOG_DIR"
+    else
+        # Fallback to pi user if bathyimager doesn't exist
+        sudo chown pi:pi "$LOG_DIR"
+    fi
     
     print_success "Environment activated"
     print_status "Configuration: $CONFIG_DIR/config.json"

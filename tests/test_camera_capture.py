@@ -19,9 +19,9 @@ from datetime import datetime
 from pathlib import Path
 
 class CameraTest:
-    def __init__(self, output_dir=None, fps=2, duration=30):
-        # Force USB storage usage if not specified
-        if output_dir is None:
+    def __init__(self, output_dir=None, fps=2, duration=30, usb_only=False):
+        # Force USB storage usage if not specified or if usb_only flag is set
+        if output_dir is None or usb_only:
             self.output_dir = self._find_usb_storage()
         else:
             self.output_dir = Path(output_dir)
@@ -45,33 +45,50 @@ class CameraTest:
         print()
         
     def _find_usb_storage(self):
-        """Find USB storage and create directory if needed"""
+        """Find USB storage with enhanced detection and create directory if needed"""
         import subprocess
         import os
         
-        print("🔍 Searching for USB storage...")
+        print("🔍 Searching for USB storage with enhanced detection...")
         
         # Priority order for USB storage locations
         usb_candidates = [
             "/media/usb-storage",
             "/media/bathycat", 
+            "/media/bathyimager",
             "/mnt/usb",
             "/media/pi",  # Default Pi automount location
         ]
         
-        # Also check for any mounted USB devices
+        # Enhanced USB device detection
         try:
+            # Check lsblk for USB devices
+            result = subprocess.run(['lsblk', '-o', 'NAME,MOUNTPOINT,FSTYPE'], 
+                                  capture_output=True, text=True)
+            if result.returncode == 0:
+                lines = result.stdout.split('\n')
+                for line in lines:
+                    # Look for mounted devices that might be USB
+                    if any(fs in line.lower() for fs in ['fat32', 'exfat', 'ext4']) and '/dev/sd' in line:
+                        parts = line.split()
+                        if len(parts) >= 2 and parts[1].startswith('/'):
+                            mount_point = parts[1]
+                            if mount_point not in usb_candidates:
+                                usb_candidates.insert(0, mount_point)
+            
+            # Also check mount command for USB devices
             result = subprocess.run(['mount'], capture_output=True, text=True)
             mount_lines = result.stdout.split('\n')
             for line in mount_lines:
-                if 'usb' in line.lower() or '/dev/sd' in line:
+                if '/dev/sd' in line and ' on ' in line:
                     # Extract mount point
-                    parts = line.split()
-                    if len(parts) >= 3:
-                        mount_point = parts[2]
-                        usb_candidates.insert(0, mount_point)  # Add to front of list
+                    parts = line.split(' on ')
+                    if len(parts) >= 2:
+                        mount_info = parts[1].split(' ')[0]
+                        if mount_info not in usb_candidates:
+                            usb_candidates.insert(0, mount_info)
         except:
-            pass
+            print("⚠️  Could not run system commands for USB detection")
         
         # Remove duplicates while preserving order
         seen = set()
@@ -81,9 +98,13 @@ class CameraTest:
                 unique_candidates.append(path)
                 seen.add(path)
         
+        print(f"🔍 Checking {len(unique_candidates)} potential USB mount points...")
+        
         # Test each candidate
         for mount_point in unique_candidates:
             mount_path = Path(mount_point)
+            print(f"   Testing: {mount_point}")
+            
             if mount_path.exists() and mount_path.is_dir():
                 # Try to create bathycat directory
                 bathycat_dir = mount_path / "bathycat" / "test_images"
@@ -94,17 +115,39 @@ class CameraTest:
                     test_file.write_text("test")
                     test_file.unlink()
                     
-                    print(f"✅ Found USB storage: {bathycat_dir}")
+                    print(f"✅ Found accessible USB storage: {bathycat_dir}")
                     
-                    # Check available space
-                    result = subprocess.run(['df', '-h', str(mount_path)], 
-                                          capture_output=True, text=True)
-                    if result.returncode == 0:
-                        lines = result.stdout.strip().split('\n')
-                        if len(lines) >= 2:
-                            space_info = lines[1].split()
-                            if len(space_info) >= 4:
-                                print(f"📊 Available space: {space_info[3]}")
+                    # Check available space and filesystem type
+                    try:
+                        result = subprocess.run(['df', '-h', str(mount_path)], 
+                                              capture_output=True, text=True)
+                        if result.returncode == 0:
+                            lines = result.stdout.strip().split('\n')
+                            if len(lines) >= 2:
+                                space_info = lines[1].split()
+                                if len(space_info) >= 4:
+                                    print(f"📊 Available space: {space_info[3]} (of {space_info[1]} total)")
+                        
+                        # Get filesystem type
+                        result = subprocess.run(['df', '-T', str(mount_path)], 
+                                              capture_output=True, text=True)
+                        if result.returncode == 0:
+                            lines = result.stdout.strip().split('\n')
+                            if len(lines) >= 2:
+                                fs_info = lines[1].split()
+                                if len(fs_info) >= 2:
+                                    fs_type = fs_info[1]
+                                    print(f"💾 Filesystem: {fs_type}")
+                                    
+                                    # Warn about filesystem compatibility
+                                    if fs_type.lower() in ['fat32', 'vfat']:
+                                        print("⚠️  FAT32 detected - may have permission limitations")
+                                    elif fs_type.lower() == 'exfat':
+                                        print("✅ exFAT detected - good cross-platform compatibility")
+                                    elif fs_type.lower() in ['ext4', 'ext3']:
+                                        print("✅ Linux filesystem detected - full feature support")
+                    except:
+                        pass
                     
                     return bathycat_dir
                     
@@ -112,27 +155,59 @@ class CameraTest:
                     print(f"❌ Permission denied: {mount_point}")
                 except Exception as e:
                     print(f"❌ Cannot use {mount_point}: {e}")
+            else:
+                print(f"   Not accessible: {mount_point}")
         
-        # If no USB storage found, error out instead of using local
-        print("❌ ERROR: No accessible USB storage found!")
-        print("Please ensure:")
-        print("1. USB storage device is plugged in")
-        print("2. USB storage is mounted (check with 'lsblk' and 'df -h')")
-        print("3. You have write permissions to the USB device")
-        print("\nTry manually mounting:")
-        print("sudo mkdir -p /media/usb-storage")
-        print("sudo mount /dev/sda1 /media/usb-storage  # Replace sda1 with your device")
-        print("sudo chown -R bathyimager:bathyimager /media/usb-storage")
+        # If no USB storage found, provide detailed error
+        print("\n❌ ERROR: No accessible USB storage found!")
+        print("\nUSB Storage Troubleshooting:")
+        print("=" * 50)
+        print("1. 🔌 Ensure USB storage device is physically connected")
+        print("2. 🔍 Check if device is detected: lsusb")
+        print("3. 📋 List storage devices: lsblk")
+        print("4. 🗂️  Check mounted filesystems: df -h")
+        print("5. 🔧 Manual mount if needed:")
+        print("   sudo mkdir -p /media/usb-storage")
+        print("   sudo mount /dev/sda1 /media/usb-storage  # Replace sda1 with your device")
+        print("   sudo chown -R $(whoami):$(whoami) /media/usb-storage")
+        print("6. ⚙️  For automatic setup: ./scripts/setup_usb_storage.sh")
+        print("7. 🧪 Test USB detection: python3 tests/test_usb_storage.py")
+        
+        print("\nRecommended filesystem formats for cross-platform compatibility:")
+        print("- exFAT: Best for Windows/Linux compatibility")
+        print("- ext4: Best for Linux performance (Windows needs special drivers)")
+        print("- FAT32: Compatible but has 4GB file size limit")
         
         raise RuntimeError("USB storage required but not found")
 
     def find_camera(self):
-        """Find available camera devices"""
-        print("Searching for cameras...")
+        """Find available camera devices with enhanced detection"""
+        print("🔍 Searching for cameras with enhanced detection...")
+        
+        # Check USB devices first
+        try:
+            import subprocess
+            result = subprocess.run(['lsusb'], capture_output=True, text=True)
+            if result.returncode == 0:
+                camera_devices = []
+                for line in result.stdout.split('\n'):
+                    if any(keyword in line.lower() for keyword in ['camera', 'webcam', 'video', 'imaging']):
+                        camera_devices.append(line.strip())
+                
+                if camera_devices:
+                    print("📹 USB Camera devices detected:")
+                    for device in camera_devices:
+                        print(f"   {device}")
+                else:
+                    print("⚠️  No obvious camera devices in USB list")
+        except:
+            print("⚠️  Could not check USB devices")
         
         # Try different camera indices
+        print("🔍 Testing video device indices...")
         for i in range(10):
             try:
+                print(f"   Testing /dev/video{i}...", end=" ")
                 cap = cv2.VideoCapture(i)
                 if cap.isOpened():
                     # Test if we can read a frame
@@ -141,12 +216,31 @@ class CameraTest:
                         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                         fps = cap.get(cv2.CAP_PROP_FPS)
-                        print(f"Found camera {i}: {width}x{height} @ {fps}fps")
+                        print(f"✅ Found camera {i}: {width}x{height} @ {fps}fps")
                         cap.release()
                         return i
+                    else:
+                        print("❌ Can't read frames")
+                else:
+                    print("❌ Can't open")
                 cap.release()
             except Exception as e:
+                print(f"❌ Error: {e}")
                 continue
+        
+        # If no cameras found, provide troubleshooting
+        print("\n❌ No working cameras found!")
+        print("\nCamera Troubleshooting:")
+        print("=" * 40)
+        print("1. 🔌 Check physical connection")
+        print("2. 🔍 List USB devices: lsusb")
+        print("3. 📹 Check video devices: ls -l /dev/video*")
+        print("4. 🧪 Test with system tools:")
+        print("   fswebcam test.jpg")
+        print("   v4l2-ctl --list-devices")
+        print("5. ⚙️  Check permissions:")
+        print("   sudo usermod -a -G video $(whoami)")
+        print("6. 🔄 Try unplugging and reconnecting camera")
         
         return None
 
@@ -203,7 +297,7 @@ class CameraTest:
             print(f"Captured: {filename} ({file_size/1024:.1f}KB)")
             self.images_captured += 1
             
-            # Also create a metadata file
+            # Also create a metadata file with enhanced information
             metadata = {
                 "filename": filename,
                 "timestamp": timestamp.isoformat(),
@@ -211,9 +305,19 @@ class CameraTest:
                 "file_size_bytes": file_size,
                 "resolution": {
                     "width": frame.shape[1],
-                    "height": frame.shape[0]
+                    "height": frame.shape[0],
+                    "channels": frame.shape[2] if len(frame.shape) > 2 else 1
                 },
-                "test_session": str(self.session_dir.name)
+                "test_session": str(self.session_dir.name),
+                "camera_info": {
+                    "opencv_version": cv2.__version__,
+                    "test_fps": self.fps,
+                    "test_duration": self.duration
+                },
+                "storage_info": {
+                    "storage_path": str(self.output_dir),
+                    "session_directory": str(self.session_dir)
+                }
             }
             
             metadata_file = self.session_dir / f"{filename}.json"
@@ -231,12 +335,19 @@ class CameraTest:
             # Find camera
             camera_index = self.find_camera()
             if camera_index is None:
-                print("ERROR: No cameras found!")
-                print("\nTroubleshooting:")
-                print("1. Check if camera is connected")
-                print("2. Try: lsusb | grep -i camera")
-                print("3. Check permissions: ls -l /dev/video*")
-                print("4. Test with: fswebcam test.jpg")
+                print("\n❌ ERROR: No working cameras found!")
+                print("\n🔧 Camera Troubleshooting Steps:")
+                print("1. 🔌 Ensure camera is physically connected")
+                print("2. 🔍 Check USB connection: lsusb | grep -i camera")
+                print("3. 📹 List video devices: ls -l /dev/video*")
+                print("4. 🛠️  Test camera manually:")
+                print("   fswebcam -d /dev/video0 test.jpg")
+                print("   v4l2-ctl --list-devices")
+                print("5. 👤 Check video group permissions:")
+                print("   groups $(whoami) | grep video")
+                print("   sudo usermod -a -G video $(whoami)")
+                print("6. 🔄 Try unplugging and reconnecting the camera")
+                print("7. 🧪 Run comprehensive test: python3 tests/test_components.py")
                 return False
             
             # Setup camera
