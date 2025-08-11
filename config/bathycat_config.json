@@ -1,6 +1,6 @@
 {
   "capture_fps": 4.0,
-  "require_gps_fix": false,
+    "require_gps_fix": false,
   "gps_fix_timeout": 300.0,
   
   "camera_device_id": 0,
@@ -15,7 +15,7 @@
   "camera_exposure": -6,
   "camera_white_balance": 4000,
   
-  "gps_port": "/dev/ttyUSB0",
+    "gps_port": "/dev/ttyUSB0",
   "gps_baudrate": 9600,
   "gps_timeout": 1.0,
   "gps_time_sync": true,
