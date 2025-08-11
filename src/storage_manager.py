@@ -98,8 +98,17 @@ class StorageManager:
         try:
             if not self.base_path.exists():
                 self.logger.error(f"Storage path does not exist: {self.base_path}")
+                
+                # Try to detect and suggest USB storage paths
+                usb_paths = self._detect_usb_storage_paths()
+                if usb_paths:
+                    self.logger.info(f"Detected USB storage at: {usb_paths}")
+                    self.logger.info(f"Consider updating storage_base_path to one of: {usb_paths}")
+                else:
+                    self.logger.warning("No USB storage detected. Is the USB drive connected and mounted?")
+                
                 return False
-            
+                
             # Check available space
             free_space_gb = self.get_free_space_gb()
             
@@ -115,6 +124,51 @@ class StorageManager:
         except Exception as e:
             self.logger.error(f"Storage availability check failed: {e}")
             return False
+    
+    def _detect_usb_storage_paths(self) -> List[str]:
+        """Detect potential USB storage mount points."""
+        potential_paths = []
+        
+        # Common USB mount points
+        common_mounts = [
+            '/media/usb-storage',
+            '/media/bathyimager', 
+            '/media/pi',
+            '/mnt/usb',
+            '/mnt/bathycat'
+        ]
+        
+        for mount_point in common_mounts:
+            if Path(mount_point).exists():
+                potential_paths.append(mount_point)
+        
+        # Check /media for any mounted devices
+        try:
+            media_path = Path('/media')
+            if media_path.exists():
+                for user_dir in media_path.iterdir():
+                    if user_dir.is_dir():
+                        for device_dir in user_dir.iterdir():
+                            if device_dir.is_dir():
+                                potential_paths.append(str(device_dir))
+        except Exception:
+            pass
+        
+        # Check mounted filesystems for USB devices
+        try:
+            import subprocess
+            result = subprocess.run(['df', '-h'], capture_output=True, text=True, timeout=5)
+            for line in result.stdout.split('\n'):
+                if '/dev/sd' in line and '/media' in line:
+                    parts = line.split()
+                    if len(parts) > 5:
+                        mount_point = parts[-1]
+                        if mount_point not in potential_paths:
+                            potential_paths.append(mount_point)
+        except Exception:
+            pass
+        
+        return potential_paths
     
     async def _test_write_permissions(self) -> bool:
         """Test write permissions to storage locations."""
