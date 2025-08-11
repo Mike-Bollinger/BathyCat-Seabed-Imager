@@ -16,6 +16,8 @@ import os
 import sys
 import time
 import unittest
+import numpy as np
+import cv2
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -93,9 +95,11 @@ class TestCameraController(unittest.TestCase):
         """Test camera information retrieval."""
         info = self.camera.get_camera_info()
         
-        # Should return dict even when not initialized
+        # Should return dict even when not initialized (but empty)
         self.assertIsInstance(info, dict)
-        self.assertIn('device_id', info)
+        # When not initialized, should be empty
+        if not self.camera.is_initialized:
+            self.assertEqual(len(info), 0)
     
     @patch('cv2.VideoCapture')
     def test_camera_initialization(self, mock_capture):
@@ -103,13 +107,24 @@ class TestCameraController(unittest.TestCase):
         # Mock successful camera
         mock_cam = Mock()
         mock_cam.isOpened.return_value = True
-        mock_cam.read.return_value = (True, Mock())
+        mock_cam.read.return_value = (True, np.zeros((480, 640, 3), dtype=np.uint8))
+        mock_cam.get.side_effect = lambda prop: {
+            cv2.CAP_PROP_FRAME_WIDTH: 640,
+            cv2.CAP_PROP_FRAME_HEIGHT: 480,
+            cv2.CAP_PROP_FPS: 30.0
+        }.get(prop, 0)
         mock_capture.return_value = mock_cam
         
         # Test initialization
         result = asyncio.run(self.camera.initialize())
         self.assertTrue(result)
         self.assertTrue(self.camera.is_initialized)
+        
+        # Now test camera info with initialized camera
+        info = self.camera.get_camera_info()
+        self.assertIn('device_id', info)
+        self.assertIn('width', info)
+        self.assertIn('height', info)
     
     @patch('cv2.VideoCapture')
     def test_camera_capture(self, mock_capture):
@@ -117,7 +132,12 @@ class TestCameraController(unittest.TestCase):
         # Mock camera and successful capture
         mock_cam = Mock()
         mock_cam.isOpened.return_value = True
-        mock_cam.read.return_value = (True, Mock())
+        mock_cam.read.return_value = (True, np.zeros((480, 640, 3), dtype=np.uint8))
+        mock_cam.get.side_effect = lambda prop: {
+            cv2.CAP_PROP_FRAME_WIDTH: 640,
+            cv2.CAP_PROP_FRAME_HEIGHT: 480,
+            cv2.CAP_PROP_FPS: 30.0
+        }.get(prop, 0)
         mock_capture.return_value = mock_cam
         
         # Initialize and test capture
@@ -320,38 +340,132 @@ def run_hardware_tests():
     print("Running hardware-specific tests...")
     
     # GPS Hardware Test
+    print("\n🛰️  GPS Hardware Tests:")
     try:
-        if os.path.exists('/dev/serial0'):
-            print("✓ GPS serial port found")
+        # Check for common GPS USB devices
+        import subprocess
+        
+        # List USB devices
+        result = subprocess.run(['lsusb'], capture_output=True, text=True, timeout=5)
+        usb_devices = result.stdout
+        
+        # Look for common GPS device identifiers
+        gps_keywords = ['GPS', 'GlobalSat', 'u-blox', 'PA1010D', 'Adafruit']
+        gps_found = any(keyword in usb_devices for keyword in gps_keywords)
+        
+        if gps_found:
+            print("✓ GPS device detected in USB devices")
+            print(f"  USB devices: {[line for line in usb_devices.split('\\n') if any(kw in line for kw in gps_keywords)]}")
         else:
-            print("✗ GPS serial port not found")
+            print("✗ No recognized GPS device found in USB devices")
+            print(f"  Available USB devices: {usb_devices.count('Bus')}")
+        
+        # Check for GPS serial devices
+        import glob
+        serial_devices = glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*')
+        
+        if serial_devices:
+            print(f"✓ Serial devices found: {serial_devices}")
+            
+            # Try to read from each serial device briefly
+            for device in serial_devices:
+                try:
+                    print(f"  Testing {device}...")
+                    result = subprocess.run(['timeout', '3', 'cat', device], 
+                                          capture_output=True, text=True, timeout=5)
+                    if '$GP' in result.stdout or '$GN' in result.stdout:
+                        print(f"    ✓ GPS NMEA data detected on {device}")
+                        print(f"      Sample: {result.stdout[:100]}...")
+                    else:
+                        print(f"    ✗ No GPS data on {device}")
+                except Exception as e:
+                    print(f"    ✗ Error testing {device}: {e}")
+        else:
+            print("✗ No serial devices found (/dev/ttyACM* or /dev/ttyUSB*)")
+            
+        # Test GPS controller
+        try:
+            sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+            from gps_controller import GPSController
+            from config import Config
+            
+            config = Config()
+            gps = GPSController(config)
+            print("✓ GPS controller imports successfully")
+            
+            # Try to get GPS stats
+            stats = gps.get_gps_stats()
+            print(f"  GPS stats: {stats}")
+            
+        except Exception as e:
+            print(f"✗ GPS controller error: {e}")
+            
     except Exception as e:
         print(f"✗ GPS test error: {e}")
     
     # Camera Hardware Test
+    print("\n📷 Camera Hardware Tests:")
     try:
         import cv2
         cap = cv2.VideoCapture(0)
         if cap.isOpened():
             ret, frame = cap.read()
             if ret:
-                print("✓ Camera capture successful")
+                print(f"✓ Camera capture successful ({frame.shape})")
+                print(f"  Resolution: {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}")
+                print(f"  FPS: {cap.get(cv2.CAP_PROP_FPS)}")
             else:
                 print("✗ Camera capture failed")
             cap.release()
         else:
             print("✗ Camera not accessible")
+            
+        # Test multiple camera indices
+        for i in range(5):
+            cap = cv2.VideoCapture(i)
+            if cap.isOpened():
+                print(f"  Camera found at index {i}")
+                cap.release()
     except Exception as e:
         print(f"✗ Camera test error: {e}")
     
     # Storage Hardware Test
+    print("\n💾 Storage Hardware Tests:")
     try:
-        if os.path.exists('/media/usb-storage'):
-            import shutil
-            total, used, free = shutil.disk_usage('/media/usb-storage')
-            print(f"✓ Storage accessible: {free // (1024**3)}GB free")
+        # Check USB storage mount points
+        mount_points = ['/media/usb-storage', '/mnt/usb', '/media/pi', '/media/bathyimager']
+        
+        for mount_point in mount_points:
+            if os.path.exists(mount_point):
+                try:
+                    import shutil
+                    total, used, free = shutil.disk_usage(mount_point)
+                    print(f"✓ Storage accessible at {mount_point}: {free // (1024**3)}GB free")
+                    
+                    # Test write access
+                    test_file = os.path.join(mount_point, 'bathycat_test')
+                    try:
+                        with open(test_file, 'w') as f:
+                            f.write('test')
+                        os.remove(test_file)
+                        print(f"  ✓ Write access confirmed")
+                    except Exception as e:
+                        print(f"  ✗ Write access failed: {e}")
+                        
+                except Exception as e:
+                    print(f"✗ Storage error at {mount_point}: {e}")
+            
+        # Check for USB devices in /dev
+        usb_devices = []
+        for device in ['/dev/sda1', '/dev/sdb1', '/dev/sdc1']:
+            if os.path.exists(device):
+                usb_devices.append(device)
+        
+        if usb_devices:
+            print(f"✓ USB block devices found: {usb_devices}")
         else:
-            print("✗ Storage mount point not found")
+            print("✗ No USB block devices found")
+            
     except Exception as e:
         print(f"✗ Storage test error: {e}")
 

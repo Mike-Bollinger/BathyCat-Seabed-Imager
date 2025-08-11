@@ -31,6 +31,44 @@ This system captures seabed images using a USB camera, tags them with GPS coordi
 4. **Configuration**: Set capture parameters and storage paths
 5. **Deployment**: Enable auto-start and deploy to vessel
 
+## Updates
+
+### Updating on Raspberry Pi
+
+To update the BathyCat system on your Raspberry Pi, simply run:
+
+```bash
+./update
+```
+
+This will:
+- Check for new updates from GitHub
+- Backup your configuration
+- Pull the latest code
+- Update dependencies
+- Restart services automatically
+- Test the update
+
+### Development Updates (Windows)
+
+When developing on Windows, use:
+
+```powershell
+# PowerShell
+.\update.ps1
+
+# Or Command Prompt
+update.bat
+```
+
+Then push changes to make them available on the Pi:
+
+```bash
+git add .
+git commit -m "Your update message"
+git push origin main
+```
+
 ## Project Structure
 
 ```
@@ -45,17 +83,22 @@ BathyCat-Seabed-Imager/
 ├── scripts/
 │   ├── install.sh            # Installation script
 │   ├── setup_services.sh     # Service configuration
+│   ├── setup_usb_storage.sh  # USB storage setup
 │   └── start_capture.sh      # Startup script
+├── tests/
+│   ├── test_components.py    # System tests
+│   └── test_camera_capture.py # Camera testing with USB storage
 ├── config/
 │   ├── bathycat_config.json  # Main configuration
 │   └── logging.conf          # Logging configuration
-├── tests/
-│   └── test_components.py    # System tests
 ├── docs/
 │   ├── INSTALLATION.md       # Detailed setup guide
 │   ├── HARDWARE_SETUP.md     # Hardware configuration
 │   ├── TROUBLESHOOTING.md    # Common issues and solutions
 │   └── API.md               # Code documentation
+├── update                    # Quick update script (Linux/Pi)
+├── update.ps1               # Update script (Windows PowerShell)
+├── update.bat               # Update script (Windows Batch)
 └── README.md                # This file
 ```
 
