@@ -355,7 +355,9 @@ def run_hardware_tests():
         
         if gps_found:
             print("✓ GPS device detected in USB devices")
-            print(f"  USB devices: {[line for line in usb_devices.split('\\n') if any(kw in line for kw in gps_keywords)]}")
+            newline_char = '\n'
+            gps_lines = [line for line in usb_devices.split(newline_char) if any(kw in line for kw in gps_keywords)]
+            print(f"  USB devices: {gps_lines}")
         else:
             print("✗ No recognized GPS device found in USB devices")
             print(f"  Available USB devices: {usb_devices.count('Bus')}")
