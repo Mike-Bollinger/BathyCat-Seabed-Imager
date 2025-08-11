@@ -1,13 +1,11 @@
 #!/bin/bash
-"""
-Start Capture Script for BathyCat Seabed Imager
-==============================================
-
-Manual startup script for testing and deployment.
-
-Author: BathyCat Systems
-Date: August 2025
-"""
+# Start Capture Script for BathyCat Seabed Imager
+# ==============================================
+#
+# Manual startup script for testing and deployment.
+#
+# Author: BathyCat Systems
+# Date: August 2025
 
 # Configuration
 INSTALL_DIR="/opt/bathycat"
