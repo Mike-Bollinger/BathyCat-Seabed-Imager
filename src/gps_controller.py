@@ -250,7 +250,7 @@ class GPSController:
     async def _process_gga(self, msg) -> bool:
         """Process GGA (Global Positioning System Fix Data) message."""
         try:
-            if msg.latitude and msg.longitude:
+            if (msg.latitude is not None) and (msg.longitude is not None):
                 self.current_position['latitude'] = float(msg.latitude)
                 self.current_position['longitude'] = float(msg.longitude)
                 self.current_position['altitude'] = float(msg.altitude) if msg.altitude else None
@@ -273,7 +273,7 @@ class GPSController:
     async def _process_rmc(self, msg) -> bool:
         """Process RMC (Recommended Minimum Navigation Information) message."""
         try:
-            if msg.latitude and msg.longitude:
+            if (msg.latitude is not None) and (msg.longitude is not None):
                 # Update position if not already set by GGA
                 if self.current_position['latitude'] is None:
                     self.current_position['latitude'] = float(msg.latitude)
