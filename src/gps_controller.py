@@ -250,6 +250,7 @@ class GPSController:
     async def _process_gga(self, msg) -> bool:
         """Process GGA (Global Positioning System Fix Data) message."""
         try:
+            self.logger.debug(f"🛰️ GGA_PROCESS: lat={getattr(msg, 'latitude', 'NONE')}, lon={getattr(msg, 'longitude', 'NONE')}")
             if (msg.latitude is not None) and (msg.longitude is not None):
                 self.current_position['latitude'] = float(msg.latitude)
                 self.current_position['longitude'] = float(msg.longitude)
@@ -267,12 +268,13 @@ class GPSController:
             return False
             
         except (ValueError, AttributeError) as e:
-            self.logger.debug(f"GGA processing error: {e}")
+            self.logger.error(f"🚨 GGA_PROCESSING_ERROR: {e}")
             return False
     
     async def _process_rmc(self, msg) -> bool:
         """Process RMC (Recommended Minimum Navigation Information) message."""
         try:
+            self.logger.debug(f"🛰️ RMC_PROCESS: lat={getattr(msg, 'latitude', 'NONE')}, lon={getattr(msg, 'longitude', 'NONE')}")
             if (msg.latitude is not None) and (msg.longitude is not None):
                 # Update position if not already set by GGA
                 if self.current_position['latitude'] is None:
@@ -292,7 +294,7 @@ class GPSController:
             return False
             
         except (ValueError, AttributeError) as e:
-            self.logger.debug(f"RMC processing error: {e}")
+            self.logger.error(f"🚨 RMC_PROCESSING_ERROR: {e}")
             return False
     
     async def _process_gsa(self, msg) -> bool:

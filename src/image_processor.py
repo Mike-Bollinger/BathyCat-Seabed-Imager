@@ -16,7 +16,7 @@ import json
 import logging
 import numpy as np
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
 from PIL import Image, ExifTags
@@ -70,6 +70,7 @@ class ImageProcessor:
                           capture_time: float) -> Optional[str]:
         """Process and save an image with metadata."""
         try:
+            self.logger.debug(f"💾 IMG_PROC_1: Starting, image_shape={getattr(image_data, 'shape', 'NO_SHAPE')}")
             start_time = asyncio.get_event_loop().time()
             
             # Generate filename based on timestamp
@@ -123,7 +124,9 @@ class ImageProcessor:
             return str(image_path)
             
         except Exception as e:
-            self.logger.error(f"Image processing error: {e}")
+            self.logger.error(f"🚨 IMG_PROCESSING_ERROR: {e}")
+            import traceback
+            self.logger.error(f"🔍 IMG_PROC_TRACEBACK: {traceback.format_exc()}")
             return None
     
     async def _save_image(self, image_data: np.ndarray, output_path: Path, 

@@ -176,15 +176,17 @@ class CameraController:
             return None
             
         try:
+            self.logger.debug("📷 CAM_CAPTURE_1: About to call camera.read()")
             ret, frame = self.camera.read()
+            self.logger.debug(f"📷 CAM_CAPTURE_2: ret={ret}, frame_type={type(frame)}")
             
             # Fix: Separate boolean checks to avoid NumPy array evaluation issues
             if not ret:
-                self.logger.error("Failed to capture image - camera.read() returned False")
+                self.logger.error("🚨 CAM_ERROR_1: camera.read() returned False")
                 return None
                 
             if frame is None:
-                self.logger.error("Failed to capture image - frame is None")
+                self.logger.error("🚨 CAM_ERROR_2: frame is None")
                 return None
                 
             # Additional validation for frame
@@ -199,7 +201,9 @@ class CameraController:
             return frame
             
         except Exception as e:
-            self.logger.error(f"Error capturing image: {e}")
+            self.logger.error(f"🚨 CAM_CAPTURE_ERROR: {e}")
+            import traceback
+            self.logger.error(f"🔍 CAM_TRACEBACK: {traceback.format_exc()}")
             return None
     
     async def capture_burst(self, count: int) -> list:
