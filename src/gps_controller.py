@@ -275,7 +275,7 @@ class GPSController:
         try:
             if msg.latitude and msg.longitude:
                 # Update position if not already set by GGA
-                if not self.current_position['latitude']:
+                if self.current_position['latitude'] is None:
                     self.current_position['latitude'] = float(msg.latitude)
                     self.current_position['longitude'] = float(msg.longitude)
                 
