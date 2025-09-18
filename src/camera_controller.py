@@ -169,42 +169,32 @@ class CameraController:
             self.logger.error(f"Test capture error: {e}")
             return False
     
-    async def capture_image(self) -> Optional[np.ndarray]:
+    def capture_image(self):
         """Capture a single image from the camera."""
         if not self.is_initialized:
             self.logger.error("Camera not initialized")
             return None
-        
-        try:
-            start_time = time.time()
             
-            # Capture frame
+        try:
             ret, frame = self.camera.read()
             
+            # Fix: Use 'is None' instead of truthiness check for NumPy arrays
             if not ret or frame is None:
-                self.logger.warning("Failed to capture frame")
+                self.logger.error("Failed to capture image")
                 return None
-            
-            # Performance tracking
-            capture_time = time.time() - start_time
-            self.capture_times.append(capture_time)
-            
-            # Keep only last 100 measurements
-            if len(self.capture_times) > 100:
-                self.capture_times.pop(0)
-            
-            self.capture_count += 1
-            self.last_capture_time = time.time()
-            
-            # Log performance occasionally
-            if self.capture_count % 100 == 0:
-                avg_time = sum(self.capture_times) / len(self.capture_times)
-                self.logger.debug(f"Average capture time: {avg_time*1000:.1f}ms")
+                
+            # Additional validation for frame
+            if frame.size == 0:
+                self.logger.error("Captured empty frame")
+                return None
+                
+            self.images_captured += 1
+            self.logger.debug(f"Image captured: {frame.shape}")
             
             return frame
             
         except Exception as e:
-            self.logger.error(f"Image capture error: {e}")
+            self.logger.error(f"Error capturing image: {e}")
             return None
     
     async def capture_burst(self, count: int) -> list:
