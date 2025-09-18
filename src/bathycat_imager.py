@@ -128,21 +128,33 @@ class BathyCatImager:
         frame_interval = 1.0 / self.config.capture_fps
         next_capture = time.time()
         
+        self.logger.debug(f"Starting capture loop with {self.config.capture_fps} FPS")
+        
         while self.running and self.capture_active:
             try:
                 current_time = time.time()
                 
                 if current_time >= next_capture:
+                    self.logger.debug("Attempting image capture...")
+                    
                     # Capture image
-                    image_data = await self.camera.capture_image()
-                    if image_data:
+                    image_data = self.camera.capture_image()
+                    self.logger.debug(f"Capture result type: {type(image_data)}")
+                    
+                    # Fix: Use 'is not None' instead of truthiness check for NumPy arrays
+                    if image_data is not None:
+                        self.logger.debug(f"Image captured successfully: {image_data.shape}")
+                        
                         # Get current GPS data
                         gps_data = self.gps.get_current_position()
+                        self.logger.debug(f"GPS data retrieved: {type(gps_data)}")
                         
                         # Process and save image
+                        self.logger.debug("Processing image...")
                         await self.processor.process_image(
                             image_data, gps_data, current_time
                         )
+                        self.logger.debug("Image processing complete")
                         
                         self.stats['images_captured'] += 1
                         
@@ -154,7 +166,7 @@ class BathyCatImager:
                             next_capture = current_time + frame_interval
                     
                     else:
-                        self.logger.warning("Failed to capture image")
+                        self.logger.warning("Failed to capture image - camera returned None")
                         self.stats['errors'] += 1
                 
                 # Short sleep to prevent CPU spinning
@@ -162,6 +174,8 @@ class BathyCatImager:
                 
             except Exception as e:
                 self.logger.error(f"Error in capture loop: {e}")
+                import traceback
+                self.logger.debug(f"Capture loop traceback: {traceback.format_exc()}")
                 self.stats['errors'] += 1
                 await asyncio.sleep(0.1)
     

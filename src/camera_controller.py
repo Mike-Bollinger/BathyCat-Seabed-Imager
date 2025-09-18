@@ -188,7 +188,8 @@ class CameraController:
                 self.logger.error("Captured empty frame")
                 return None
                 
-            self.images_captured += 1
+            self.capture_count += 1
+            self.last_capture_time = time.time()
             self.logger.debug(f"Image captured: {frame.shape}")
             
             return frame
