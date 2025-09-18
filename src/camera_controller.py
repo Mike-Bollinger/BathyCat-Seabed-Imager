@@ -155,7 +155,7 @@ class CameraController:
         try:
             for attempt in range(3):
                 ret, frame = self.camera.read()
-                if ret and frame is not None:
+                if ret and (frame is not None):
                     height, width = frame.shape[:2]
                     self.logger.info(f"Test capture successful: {width}x{height}")
                     return True
@@ -178,9 +178,13 @@ class CameraController:
         try:
             ret, frame = self.camera.read()
             
-            # Fix: Use 'is None' instead of truthiness check for NumPy arrays
-            if not ret or frame is None:
-                self.logger.error("Failed to capture image")
+            # Fix: Separate boolean checks to avoid NumPy array evaluation issues
+            if not ret:
+                self.logger.error("Failed to capture image - camera.read() returned False")
+                return None
+                
+            if frame is None:
+                self.logger.error("Failed to capture image - frame is None")
                 return None
                 
             # Additional validation for frame
