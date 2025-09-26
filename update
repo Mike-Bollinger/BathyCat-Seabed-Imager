@@ -1,18 +1,18 @@
 #!/bin/bash
-"""
-BathyCat Seabed Imager - Quick Update Script
-============================================
-
-Simple script to update the BathyCat system from GitHub.
-
-Usage: 
-  ./update           - Interactive update with conflict resolution
-  ./update --force   - Force reset to remote version (discards local changes)
-  ./update --stash   - Auto-stash local changes and pull
-
-Author: Mike Bollinger
-Date: August 2025
-"""
+# filepath: update
+#!/bin/bash
+# BathyCat Seabed Imager - Quick Update Script
+# ============================================
+# 
+# Simple script to update the BathyCat system from GitHub.
+#
+# Usage: 
+#   ./update           - Interactive update with conflict resolution
+#   ./update --force   - Force reset to remote version (discards local changes)
+#   ./update --stash   - Auto-stash local changes and pull
+#
+# Author: Mike Bollinger
+# Date: August 2025
 
 set -e  # Exit on any error
 
@@ -56,6 +56,9 @@ echo "========================================"
 if [ ! -f "src/bathycat_imager.py" ]; then
     echo "❌ Error: Not in BathyCat project directory"
     echo "   Please run this script from the project root"
+    echo "   Current directory: $(pwd)"
+    echo "   Looking for: src/bathycat_imager.py"
+    ls -la
     exit 1
 fi
 
