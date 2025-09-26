@@ -286,7 +286,9 @@ class GPSController:
                 self.current_position['course'] = float(msg.true_course) if msg.true_course else None
                 
                 # Time synchronization
-                if self.time_sync_enabled and msg.timestamp and msg.datestamp:
+                if (self.time_sync_enabled and 
+                    msg.timestamp is not None and 
+                    msg.datestamp is not None):
                     await self._sync_system_time(msg.timestamp, msg.datestamp)
                 
                 return True
