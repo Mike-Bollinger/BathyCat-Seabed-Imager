@@ -1,8 +1,8 @@
 #!/bin/bash
-"""
-Camera Permission Fix Script for BathyCat
-Fixes common camera access issues on Raspberry Pi
-"""
+#
+# Camera Permission Fix Script for BathyCat
+# Fixes common camera access issues on Raspberry Pi
+#
 
 echo "🔧 BathyCat Camera Permission Fix"
 echo "================================"
