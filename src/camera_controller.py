@@ -47,17 +47,28 @@ class CameraController:
         self.logger.info(f"Initializing camera device {self.device_id}")
         
         try:
-            # Try to open camera with different backends
-            backends = [cv2.CAP_V4L2, cv2.CAP_ANY]
+            # Try multiple camera access methods
+            access_methods = [
+                ("Index with V4L2", self.device_id, cv2.CAP_V4L2),
+                ("Index with ANY", self.device_id, cv2.CAP_ANY),
+                ("Index only", self.device_id, None),
+                ("Device path", f"/dev/video{self.device_id}", None),
+                ("Device path with V4L2", f"/dev/video{self.device_id}", cv2.CAP_V4L2),
+            ]
             
-            for backend in backends:
-                self.logger.debug(f"Trying backend: {backend}")
-                self.camera = cv2.VideoCapture(self.device_id, backend)
+            for method_name, device, backend in access_methods:
+                self.logger.debug(f"Trying {method_name}: device={device}, backend={backend}")
+                
+                if backend is not None:
+                    self.camera = cv2.VideoCapture(device, backend)
+                else:
+                    self.camera = cv2.VideoCapture(device)
                 
                 if self.camera.isOpened():
-                    self.logger.info(f"Camera opened with backend {backend}")
+                    self.logger.info(f"Camera opened successfully using {method_name}")
                     break
                 else:
+                    self.logger.debug(f"{method_name} failed")
                     self.camera.release()
                     self.camera = None
             

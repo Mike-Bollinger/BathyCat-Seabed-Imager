@@ -27,56 +27,16 @@ def test_simple_capture():
         print(f"❌ Config error: {e}")
         return False
     
-    # Try different camera access methods
-    print("\n--- Testing Camera Open Methods ---")
-    camera = None
-    
-    # Method 1: Index with V4L2 backend (like BathyCat)
-    print("🔍 Trying method 1: Index with V4L2 backend")
+    # Open camera directly (like BathyCat does)
+    print("\n--- Testing Camera Open ---")
     try:
         camera = cv2.VideoCapture(config.camera_device_id, cv2.CAP_V4L2)
-        if camera.isOpened():
-            print("✅ Method 1 successful: Index with V4L2 backend")
-        else:
-            print("❌ Method 1 failed")
-            camera.release()
-            camera = None
+        if not camera.isOpened():
+            print("❌ Camera failed to open")
+            return False
+        print("✅ Camera opened successfully")
     except Exception as e:
-        print(f"❌ Method 1 error: {e}")
-        camera = None
-    
-    # Method 2: Just index (no backend specified)
-    if camera is None:
-        print("🔍 Trying method 2: Index only")
-        try:
-            camera = cv2.VideoCapture(config.camera_device_id)
-            if camera.isOpened():
-                print("✅ Method 2 successful: Index only")
-            else:
-                print("❌ Method 2 failed")
-                camera.release()
-                camera = None
-        except Exception as e:
-            print(f"❌ Method 2 error: {e}")
-            camera = None
-    
-    # Method 3: Device path
-    if camera is None:
-        print("🔍 Trying method 3: Device path")
-        try:
-            camera = cv2.VideoCapture("/dev/video0")
-            if camera.isOpened():
-                print("✅ Method 3 successful: Device path")
-            else:
-                print("❌ Method 3 failed")
-                camera.release()
-                camera = None
-        except Exception as e:
-            print(f"❌ Method 3 error: {e}")
-            camera = None
-    
-    if camera is None:
-        print("❌ All camera access methods failed")
+        print(f"❌ Camera open error: {e}")
         return False
     
     # Configure camera (like BathyCat does)
