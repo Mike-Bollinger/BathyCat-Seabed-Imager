@@ -69,6 +69,8 @@ install_safe_dependencies() {
         python3-pip \
         python3-venv \
         git \
+        wget \
+        unzip \
         v4l-utils \
         fswebcam \
         htop \

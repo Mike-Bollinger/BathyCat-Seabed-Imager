@@ -22,11 +22,25 @@ sudo su - bathyimager
 
 ### 2. Install BathyCat
 ```bash
+# First install git (not included by default)
+sudo apt update
+sudo apt install -y git
+
 # Clone the repository
 git clone https://github.com/Mike-Bollinger/BathyCat-Seabed-Imager.git
 cd BathyCat-Seabed-Imager
 
 # Run the safe install script
+sudo ./scripts/safe_install.sh
+```
+
+**Alternative if git fails:**
+```bash
+# Download as ZIP instead
+wget https://github.com/Mike-Bollinger/BathyCat-Seabed-Imager/archive/refs/heads/main.zip
+sudo apt install -y unzip
+unzip main.zip
+cd BathyCat-Seabed-Imager-main
 sudo ./scripts/safe_install.sh
 ```
 
