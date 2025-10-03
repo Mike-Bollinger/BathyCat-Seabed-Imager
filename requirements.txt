@@ -1,5 +1,8 @@
 # BathyCat Seabed Imager - Python Dependencies
 # ==========================================
+# 
+# All packages required for full BathyCat functionality.
+# Tested on Raspberry Pi 4 with Python 3.13
 
 # Core imaging and computer vision
 opencv-python>=4.8.0
@@ -10,14 +13,18 @@ Pillow>=10.0.0
 pyserial>=3.5
 pynmea2>=1.19.0
 
-# System utilities
+# System utilities and monitoring
 psutil>=5.9.0
 
-# Image metadata handling
+# Image metadata handling (EXIF data)
 piexif>=1.1.3
 
-# Async I/O (usually included with Python 3.7+)
+# Async I/O for high-performance file operations
 aiofiles>=23.0.0
+
+# Note: System dependencies also required (install via apt):
+# sudo apt install -y libgl1 libglib2.0-0 libsm6 libxext6 libxrender-dev
+# These provide OpenGL libraries needed by OpenCV on headless systems
 
 # Optional: MQTT for remote monitoring
 # asyncio-mqtt>=0.16.0
