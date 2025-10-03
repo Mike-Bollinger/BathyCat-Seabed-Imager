@@ -51,7 +51,7 @@ echo "⚙️ Configuring /etc/fstab..."
 
 # Remove any existing entries for this UUID or mount point
 sed -i.backup "/UUID=$USB_UUID/d" /etc/fstab
-sed -i "/$(echo "$MOUNT_POINT" | sed 's/[[\.*^$()+?{|]/\\&/g')/d" /etc/fstab
+sed -i "\|$MOUNT_POINT|d" /etc/fstab
 
 # Add new fstab entry with proper options for exfat
 FSTAB_LINE="UUID=$USB_UUID $MOUNT_POINT exfat uid=$BATHY_UID,gid=$BATHY_GID,umask=0022,auto,user,rw,exec 0 0"
