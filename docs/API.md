@@ -335,6 +335,76 @@ Shutdown image processor.
 
 ---
 
+## USB Manager API
+
+### Class: `USBManager`
+
+Manages automatic USB device detection, mounting, and permission configuration for the BathyCat storage system.
+
+#### Constructor
+
+```python
+USBManager(config: Config)
+```
+
+**Parameters:**
+- `config`: System configuration object
+
+**Example:**
+```python
+from usb_manager import USBManager
+
+usb_manager = USBManager(config)
+if usb_manager.ensure_mounted():
+    bathycat_path = usb_manager.get_bathycat_path()
+```
+
+#### Methods
+
+##### `find_usb_device() -> Optional[Dict[str, str]]`
+
+Find the BathyCat USB device by UUID or label.
+
+**Returns:**
+- Device information dictionary with 'device', 'uuid', 'label', 'type' keys, or None if not found
+
+##### `mount_device(device_path: str, mount_point: str) -> bool`
+
+Mount USB device with proper permissions for BathyCat user.
+
+**Parameters:**
+- `device_path`: Path to device (e.g., '/dev/sda1')
+- `mount_point`: Mount point directory path
+
+**Returns:**
+- `True` if mounted successfully, `False` otherwise
+
+##### `verify_mount_permissions(mount_point: str) -> bool`
+
+Verify that the BathyCat user has write permissions to the mount point.
+
+**Parameters:**
+- `mount_point`: Directory path to verify
+
+**Returns:**
+- `True` if permissions are correct, `False` otherwise
+
+##### `ensure_mounted() -> bool`
+
+Ensure BathyCat USB storage is mounted and accessible.
+
+**Returns:**
+- `True` if USB is mounted and ready, `False` otherwise
+
+##### `get_bathycat_path() -> Optional[Path]`
+
+Get the BathyCat directory path on the mounted USB storage.
+
+**Returns:**
+- Path object to BathyCat directory, or None if not available
+
+---
+
 ## Storage Manager API
 
 ### Class: `StorageManager`

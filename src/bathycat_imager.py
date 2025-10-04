@@ -41,7 +41,7 @@ class BathyCatImager:
         self.camera = CameraController(self.config, self.logger)
         self.gps = GPSController(self.config, self.logger)
         self.processor = ImageProcessor(self.config, self.logger)
-        self.storage = StorageManager(self.config, self.logger)
+        self.storage = StorageManager(self.config)
         
         # Control flags
         self.running = False

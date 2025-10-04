@@ -26,6 +26,7 @@ This system captures seabed images using a USB camera, tags them with GPS coordi
 - **✅ Auto-start capability**: Runs automatically on boot via systemd
 - **✅ Error recovery**: Individual component error handling prevents system crashes
 - **✅ Multi-filesystem USB**: Supports exFAT, VFAT, ext4, NTFS storage devices
+- **✅ Integrated USB mounting**: Automatic USB detection and mounting within the application
 - **✅ Comprehensive testing**: Full system verification with automated tests
 
 ## Quick Start
@@ -88,22 +89,30 @@ pip install -r ~/BathyCat-Seabed-Imager/requirements.txt
 #### **Issue 3: USB Storage Permission Denied**
 **Symptoms**: `PermissionError: [Errno 13] Permission denied: '/media/usb-storage/bathycat'`
 ```bash
-# Solution: Mount USB with correct permissions
+# NEW: The system now uses integrated USB management
+# USB mounting is handled automatically by the application
+# Check service logs for USB mounting status:
+journalctl -u bathycat-imager | grep -i usb
+
+# Legacy solution (if needed):
 sudo umount /media/usb-storage
 sudo mount -o uid=bathyimager,gid=bathyimager,umask=0022 /dev/sda1 /media/usb-storage
-
-# Make permanent by adding to /etc/fstab
-echo "/dev/sda1 /media/usb-storage auto uid=bathyimager,gid=bathyimager,umask=0022 0 0" | sudo tee -a /etc/fstab
 ```
 
 #### **Issue 4: USB Drive Not Detected**
-**Symptoms**: No USB storage visible
+**Symptoms**: No USB storage visible or "BathyCat USB drive not found"
 ```bash
+# NEW: Check integrated USB detection logs
+journalctl -u bathycat-imager | grep -E "(USB|FCDF-E63E|BATHYCAT)"
+
+# Verify USB drive has correct label and UUID
+lsblk -f | grep -E "BATHYCAT|FCDF-E63E"
+
 # Check connected drives
 lsblk
 lsusb | grep -i storage
 
-# Manual mount if auto-mount fails
+# Manual mount if auto-mount fails (legacy)
 sudo mkdir -p /media/usb-storage
 sudo mount /dev/sda1 /media/usb-storage
 ```

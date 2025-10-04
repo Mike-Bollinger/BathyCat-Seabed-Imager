@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 import psutil
+from usb_manager import USBManager
 
 
 class StorageManager:
@@ -27,8 +28,11 @@ class StorageManager:
         self.config = config
         self.logger = logging.getLogger(__name__)
         
-        # Storage settings
-        self.base_path = Path(config.storage_base_path)
+        # Initialize USB manager for automatic mounting
+        self.usb_manager = USBManager(config)
+        
+        # Storage settings - will be updated after USB mount
+        self._base_path_configured = False
         self.min_free_space_gb = config.min_free_space_gb
         self.auto_cleanup_enabled = config.auto_cleanup_enabled
         self.cleanup_threshold_gb = config.cleanup_threshold_gb
@@ -40,7 +44,32 @@ class StorageManager:
         self.total_images_stored = 0
         self.total_space_used = 0
         
-        # Directory structure
+        # Directory structure - will be set after USB mount verification
+        self.directories = {}
+        self.base_path = None
+        
+        self.logger.info("💾 Storage Manager initialized with USB auto-mounting")
+    
+    def _ensure_usb_mounted_and_configured(self) -> bool:
+        """Ensure USB is mounted and configure storage paths."""
+        if self._base_path_configured and self.base_path and self.base_path.exists():
+            return True
+        
+        self.logger.info("🔍 Ensuring USB storage is mounted and configured...")
+        
+        # Ensure USB is mounted
+        if not self.usb_manager.ensure_mounted():
+            self.logger.error("❌ Failed to mount USB storage")
+            return False
+        
+        # Get BathyCat path on USB
+        bathycat_path = self.usb_manager.get_bathycat_path()
+        if not bathycat_path:
+            self.logger.error("❌ Could not get BathyCat path on USB storage")
+            return False
+        
+        # Configure storage paths
+        self.base_path = bathycat_path
         self.directories = {
             'images': self.base_path / 'images',
             'metadata': self.base_path / 'metadata',
@@ -48,12 +77,20 @@ class StorageManager:
             'logs': self.base_path / 'logs',
             'exports': self.base_path / 'exports'
         }
+        
+        self._base_path_configured = True
+        self.logger.info(f"✅ Storage configured at {self.base_path}")
+        return True
     
     async def initialize(self) -> bool:
         """Initialize storage system."""
-        self.logger.info(f"Initializing storage at {self.base_path}")
-        
         try:
+            # First ensure USB is mounted and paths are configured
+            if not self._ensure_usb_mounted_and_configured():
+                return False
+            
+            self.logger.info(f"Initializing storage at {self.base_path}")
+            
             # Create directory structure
             self._create_directory_structure()
             
@@ -237,6 +274,11 @@ class StorageManager:
     def get_free_space_gb(self) -> float:
         """Get free space in GB."""
         try:
+            # Ensure USB is mounted before checking space
+            if not self._ensure_usb_mounted_and_configured():
+                self.logger.warning("USB not mounted, returning 0 free space")
+                return 0.0
+                
             statvfs = shutil.disk_usage(self.base_path)
             return statvfs.free / (1024**3)
         except Exception as e:
@@ -264,6 +306,18 @@ class StorageManager:
     async def check_storage_health(self) -> Dict[str, Any]:
         """Check storage health and return status."""
         try:
+            # Ensure USB is mounted before checking health
+            if not self._ensure_usb_mounted_and_configured():
+                return {
+                    'status': 'error',
+                    'free_space_gb': 0.0,
+                    'total_space_gb': 0.0,
+                    'used_space_gb': 0.0,
+                    'percentage_used': 100.0,
+                    'warning_level': 'critical',
+                    'message': 'USB storage not mounted'
+                }
+            
             current_time = asyncio.get_event_loop().time()
             
             # Only check if enough time has passed
