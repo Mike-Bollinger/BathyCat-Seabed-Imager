@@ -187,9 +187,17 @@ class CameraController:
             return None
             
         try:
-            self.logger.debug("📷 CAM_CAPTURE_1: About to call camera.read()")
+            # Flush buffer by reading multiple frames to get the latest
+            self.logger.debug("📷 CAM_CAPTURE_1: Flushing camera buffer")
+            for _ in range(3):  # Flush old frames
+                ret, _ = self.camera.read()
+                if not ret:
+                    break
+                    
+            # Now capture the actual frame
+            self.logger.debug("📷 CAM_CAPTURE_2: Capturing fresh frame")
             ret, frame = self.camera.read()
-            self.logger.debug(f"📷 CAM_CAPTURE_2: ret={ret}, frame_type={type(frame)}")
+            self.logger.debug(f"📷 CAM_CAPTURE_3: ret={ret}, frame_type={type(frame)}")
             
             # Fix: Separate boolean checks to avoid NumPy array evaluation issues
             if not ret:
@@ -202,12 +210,21 @@ class CameraController:
                 
             # Additional validation for frame
             if frame.size == 0:
-                self.logger.error("Captured empty frame")
+                self.logger.error("🚨 CAM_ERROR_3: Captured empty frame")
+                return None
+                
+            # Check if frame is completely black (potential issue)
+            if frame.max() == 0:
+                self.logger.warning("🚨 CAM_WARNING: Frame is completely black")
+                
+            # Check frame dimensions
+            if len(frame.shape) != 3 or frame.shape[2] != 3:
+                self.logger.error(f"🚨 CAM_ERROR_4: Invalid frame shape: {frame.shape}")
                 return None
                 
             self.capture_count += 1
             self.last_capture_time = time.time()
-            self.logger.debug(f"Image captured: {frame.shape}")
+            self.logger.debug(f"✅ Image captured successfully: {frame.shape}, min/max: {frame.min()}/{frame.max()}")
             
             return frame
             

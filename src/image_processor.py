@@ -42,7 +42,6 @@ class ImageProcessor:
         self.base_path = Path(config.storage_base_path)
         self.images_path = self.base_path / "images"
         self.metadata_path = self.base_path / "metadata"
-        self.previews_path = self.base_path / "previews"
         
         # Statistics
         self.processed_count = 0
@@ -57,8 +56,6 @@ class ImageProcessor:
             self.images_path.mkdir(parents=True, exist_ok=True)
             if self.enable_metadata:
                 self.metadata_path.mkdir(parents=True, exist_ok=True)
-            if self.enable_preview:
-                self.previews_path.mkdir(parents=True, exist_ok=True)
             
             self.logger.info(f"Storage directories created at {self.base_path}")
             
@@ -98,13 +95,7 @@ class ImageProcessor:
                     session_metadata_path, filename_base, gps_data, capture_time, image_path
                 )
             
-            # Create preview if enabled
-            if self.enable_preview:
-                session_previews_path = self.previews_path / session_dir
-                session_previews_path.mkdir(exist_ok=True)
-                await self._create_preview(
-                    image_data, session_previews_path, filename_base
-                )
+            # Preview generation disabled for performance
             
             # Update statistics
             processing_time = asyncio.get_event_loop().time() - start_time
@@ -273,25 +264,7 @@ class ImageProcessor:
         except Exception as e:
             self.logger.error(f"Failed to save metadata: {e}")
     
-    async def _create_preview(self, image_data: np.ndarray, output_path: Path,
-                            filename_base: str):
-        """Create a small preview image."""
-        try:
-            # Resize image for preview
-            height, width = image_data.shape[:2]
-            preview_width = self.config.preview_width
-            preview_height = int(height * preview_width / width)
-            
-            preview_image = cv2.resize(image_data, (preview_width, preview_height))
-            
-            # Save preview
-            preview_path = output_path / f"{filename_base}_preview.jpg"
-            cv2.imwrite(str(preview_path), preview_image, 
-                       [cv2.IMWRITE_JPEG_QUALITY, 70])
-                       
-        except Exception as e:
-            self.logger.error(f"Failed to create preview: {e}")
-    
+
     def get_processing_stats(self) -> Dict[str, Any]:
         """Get image processing statistics."""
         stats = {

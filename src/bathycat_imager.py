@@ -38,9 +38,9 @@ class BathyCatImager:
         self.logger = self._setup_logging()
         
         # Initialize components
-        self.camera = CameraController(self.config, self.logger)
-        self.gps = GPSController(self.config, self.logger)
-        self.processor = ImageProcessor(self.config, self.logger)
+        self.camera = CameraController(self.config)
+        self.gps = GPSController(self.config)
+        self.processor = ImageProcessor(self.config)
         self.storage = StorageManager(self.config)
         
         # Control flags
@@ -147,7 +147,7 @@ class BathyCatImager:
         frame_interval = 1.0 / fps
         next_capture = time.time()
         
-        self.logger.info(f"📷 Starting capture loop with {fps} FPS")
+        self.logger.info(f"📷 Starting capture loop with {fps} FPS (interval: {frame_interval:.3f}s)")
         
         while self.running and self.capture_active:
             try:
@@ -158,8 +158,8 @@ class BathyCatImager:
                     
                     # Step 1: Capture image
                     try:
-                        success, image_data, metadata = await self.camera.capture_image()
-                        if not success or image_data is None:
+                        image_data = self.camera.capture_image()
+                        if image_data is None:
                             self.logger.warning("⚠️  Camera returned no image - retrying")
                             await asyncio.sleep(0.1)
                             continue
@@ -186,7 +186,7 @@ class BathyCatImager:
                     # Step 3: Process and save image
                     try:
                         image_path = await self.processor.process_image(
-                            image_data, gps_data, current_time, metadata
+                            image_data, gps_data, current_time
                         )
                         
                         if image_path:
@@ -201,11 +201,12 @@ class BathyCatImager:
                         self.logger.error(f"Processing traceback: {traceback.format_exc()}")
                         self.stats['errors'] += 1
                     
-                    # Schedule next capture
-                    next_capture = current_time + frame_interval
+                    # Schedule next capture with more precise timing
+                    next_capture += frame_interval  # Use += to prevent drift
                 
-                # Short sleep to prevent CPU spinning
-                await asyncio.sleep(0.01)
+                # Smaller sleep to maintain precise timing at 4 Hz
+                sleep_time = max(0.001, (next_capture - time.time()) / 2)
+                await asyncio.sleep(min(sleep_time, 0.005))
                 
             except Exception as e:
                 self.logger.error(f"❌ Capture loop error: {e}")
