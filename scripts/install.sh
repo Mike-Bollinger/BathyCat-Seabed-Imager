@@ -1,68 +1,162 @@
 #!/bin/bash
 #
-# BathyCat Complete Installation Script
-# ====================================
-# 
-# Installs and configures the complete BathyCat system
+# BathyCat Seabed Imager Installation Script
+# =========================================
+#
+# This script installs the BathyCat system on a Raspberry Pi with all
+# dependencies, system services, and configuration.
+#
+# Usage: sudo ./install.sh [options]
+#
+# Options:
+#   --dev      Install in development mode
+#   --update   Update existing installation
+#   --help     Show this help message
+#
 
-set -e
+set -e  # Exit on any error
 
-# Colors
+# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m'
+NC='\033[0m' # No Color
 
-print_status() { echo -e "${BLUE}[INFO]${NC} $1"; }
-print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
-print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-
-# Configuration
+# Installation configuration
+INSTALL_USER="pi"
 INSTALL_DIR="/opt/bathycat"
 CONFIG_DIR="/etc/bathycat"
-SERVICE_NAME="bathycat-imager"
+LOG_DIR="/var/log/bathycat"
+SERVICE_NAME="bathyimager"
+PYTHON_ENV="$INSTALL_DIR/venv"
 
-# Detect actual user (the one who invoked sudo)
-if [ -n "$SUDO_USER" ]; then
-    USER="$SUDO_USER"
-else
-    USER="pi"  # Fallback to pi if SUDO_USER not set
-fi
+# Flags
+DEV_MODE=false
+UPDATE_MODE=false
+VERBOSE=false
 
-# Validate user exists
-if ! id "$USER" &>/dev/null; then
-    print_error "User '$USER' does not exist on this system"
-    print_error "Available users: $(cut -d: -f1 /etc/passwd | grep -v '^_' | head -10 | tr '\n' ' ')"
-    exit 1
-fi
+# Function to print colored output
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
 
-print_status "Using user: $USER"
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
 
-# Check if running as root
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Function to check if running as root
 check_root() {
-    if [ "$EUID" -ne 0 ]; then
+    if [[ $EUID -ne 0 ]]; then
         print_error "This script must be run as root (use sudo)"
         exit 1
     fi
 }
 
-# Update system packages
-update_system() {
-    print_status "Updating system packages..."
-    apt-get update
-    print_success "Package lists updated"
+# Function to show help
+show_help() {
+    cat << EOF
+BathyCat Seabed Imager Installation Script
+
+Usage: sudo $0 [options]
+
+Options:
+    --dev       Install in development mode (editable install)
+    --update    Update existing installation
+    --verbose   Enable verbose output
+    --help      Show this help message
+
+This script will:
+1. Update system packages
+2. Install Python dependencies
+3. Install BathyCat software
+4. Configure system services
+5. Set up directories and permissions
+6. Enable and start the BathyCat imaging service
+
+Requirements:
+- Raspberry Pi OS (Bullseye or later)
+- Internet connection for package downloads
+- USB camera and GPS device (for operation)
+
+EOF
 }
 
-# Install system dependencies
-install_dependencies() {
+# Function to parse command line arguments
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --dev)
+                DEV_MODE=true
+                shift
+                ;;
+            --update)
+                UPDATE_MODE=true
+                shift
+                ;;
+            --verbose)
+                VERBOSE=true
+                set -x
+                shift
+                ;;
+            --help)
+                show_help
+                exit 0
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+}
+
+# Function to detect Raspberry Pi
+detect_raspberry_pi() {
+    print_status "Detecting hardware platform..."
+    
+    if [[ ! -f /proc/cpuinfo ]]; then
+        print_error "Cannot read /proc/cpuinfo"
+        return 1
+    fi
+    
+    if grep -q "Raspberry Pi" /proc/cpuinfo; then
+        PI_MODEL=$(grep "Model" /proc/cpuinfo | cut -d: -f2 | xargs)
+        print_success "Detected: $PI_MODEL"
+        return 0
+    else
+        print_warning "Not running on Raspberry Pi - some features may not work"
+        return 0
+    fi
+}
+
+# Function to update system packages
+update_system() {
+    print_status "Updating system packages..."
+    
+    # Update package lists
+    apt-get update -y
+    
+    # Upgrade existing packages
+    apt-get upgrade -y
+    
+    print_success "System packages updated"
+}
+
+# Function to install system dependencies
+install_system_dependencies() {
     print_status "Installing system dependencies..."
     
-    # Note: Updated package names for Debian Trixie compatibility (2025)
-    # - libatlas-base-dev → libopenblas-dev (BLAS/LAPACK libraries)
-    # - exfat-utils → exfatprogs (exFAT filesystem utilities)
-    
+    # Core system packages
     apt-get install -y \
         python3 \
         python3-pip \
@@ -71,124 +165,233 @@ install_dependencies() {
         build-essential \
         cmake \
         pkg-config \
+        git \
+        curl \
+        wget \
+        unzip
+    
+    # OpenCV dependencies
+    apt-get install -y \
+        libopencv-dev \
+        python3-opencv \
+        libatlas-base-dev \
         libjpeg-dev \
-        libtiff5-dev \
         libpng-dev \
+        libtiff-dev \
         libavcodec-dev \
         libavformat-dev \
         libswscale-dev \
         libv4l-dev \
         libxvidcore-dev \
-        libx264-dev \
-        libgtk-3-dev \
-        libopenblas-dev \
-        gfortran \
-        python3-numpy \
-        fswebcam \
-        v4l-utils \
-        usbutils \
-        exfat-fuse \
-        exfatprogs \
-        git \
-        wget \
-        unzip
+        libx264-dev
+    
+    # GPIO and hardware support
+    apt-get install -y \
+        python3-rpi.gpio \
+        raspberrypi-kernel-headers \
+        i2c-tools
+    
+    # Serial/USB support
+    apt-get install -y \
+        minicom \
+        setserial \
+        usbutils
+    
+    # System utilities
+    apt-get install -y \
+        systemd \
+        rsyslog \
+        logrotate \
+        htop \
+        tree
     
     print_success "System dependencies installed"
 }
 
-# Create installation directories
-create_directories() {
-    print_status "Creating installation directories..."
+# Function to create system user and directories
+setup_directories() {
+    print_status "Setting up directories and user..."
     
+    # Create installation directory
     mkdir -p "$INSTALL_DIR"
+    
+    # Create configuration directory
     mkdir -p "$CONFIG_DIR"
-    mkdir -p "/var/log/bathycat"
     
-    chown -R "$USER:$USER" "$INSTALL_DIR"
-    chown -R "$USER:$USER" "$CONFIG_DIR"
-    chown -R "$USER:$USER" "/var/log/bathycat"
+    # Create log directory
+    mkdir -p "$LOG_DIR"
     
-    print_success "Directories created"
-}
-
-# Copy application files
-copy_application() {
-    print_status "Installing BathyCat application..."
-    
-    if [ -d "src" ]; then
-        cp -r src/* "$INSTALL_DIR/"
-        cp config/bathycat_config.json "$CONFIG_DIR/config.json"
-        cp scripts/setup_usb_storage_robust.sh "$INSTALL_DIR/setup_usb_storage.sh"
-        
-        # Make scripts executable
-        chmod +x "$INSTALL_DIR"/*.sh 2>/dev/null || true
-        
-        chown -R "$USER:$USER" "$INSTALL_DIR"
-        chown -R "$USER:$USER" "$CONFIG_DIR"
-        
-        print_success "Application files installed"
-    else
-        print_error "Source files not found. Run from BathyCat project directory."
-        exit 1
+    # Create user if doesn't exist
+    if ! id "$INSTALL_USER" &>/dev/null; then
+        useradd -r -d "$INSTALL_DIR" -s /bin/bash "$INSTALL_USER"
+        print_status "Created user: $INSTALL_USER"
     fi
+    
+    # Add user to necessary groups
+    usermod -a -G dialout,gpio,i2c,spi "$INSTALL_USER"
+    
+    # Set ownership
+    chown -R "$INSTALL_USER:$INSTALL_USER" "$INSTALL_DIR"
+    chown -R "$INSTALL_USER:$INSTALL_USER" "$LOG_DIR"
+    
+    print_success "Directories and user configured"
 }
 
-# Create Python virtual environment
-create_venv() {
-    print_status "Creating Python virtual environment..."
+# Function to create Python virtual environment
+setup_python_environment() {
+    print_status "Setting up Python virtual environment..."
     
-    sudo -u "$USER" python3 -m venv "$INSTALL_DIR/venv"
+    # Create virtual environment
+    sudo -u "$INSTALL_USER" python3 -m venv "$PYTHON_ENV"
     
-    # Activate and install packages
-    sudo -u "$USER" bash -c "
-        source '$INSTALL_DIR/venv/bin/activate'
-        pip install --upgrade pip
-        pip install opencv-python numpy pillow pyserial pynmea2 psutil piexif
-    "
+    # Upgrade pip
+    sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install --upgrade pip setuptools wheel
     
-    print_success "Python environment created"
+    print_success "Python virtual environment created"
 }
 
-# Configure camera permissions
-configure_camera() {
-    print_status "Configuring camera permissions..."
+# Function to install Python dependencies
+install_python_dependencies() {
+    print_status "Installing Python dependencies..."
     
-    # Add user to video group
-    usermod -a -G video "$USER"
+    # Core dependencies
+    sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install \
+        opencv-python \
+        numpy \
+        pillow \
+        piexif \
+        pynmea2 \
+        pyserial \
+        RPi.GPIO \
+        psutil
     
-    # Create udev rule for camera permissions
-    cat > /etc/udev/rules.d/99-bathycat-camera.rules << EOF
-# BathyCat Camera Permissions
-SUBSYSTEM=="video4linux", GROUP="video", MODE="0664"
-KERNEL=="video[0-9]*", GROUP="video", MODE="0664"
+    # Development dependencies (if dev mode)
+    if [[ "$DEV_MODE" == true ]]; then
+        sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install \
+            pytest \
+            pytest-cov \
+            black \
+            flake8 \
+            mypy \
+            pre-commit
+    fi
+    
+    print_success "Python dependencies installed"
+}
+
+# Function to install BathyCat software
+install_bathycat() {
+    print_status "Installing BathyCat software..."
+    
+    # Copy source code
+    if [[ "$DEV_MODE" == true ]]; then
+        # Development mode - create symlink
+        if [[ -d "$(pwd)/src" ]]; then
+            ln -sfn "$(pwd)/src" "$INSTALL_DIR/src"
+            chown -h "$INSTALL_USER:$INSTALL_USER" "$INSTALL_DIR/src"
+        else
+            print_error "Source directory not found. Run from BathyCat project root."
+            exit 1
+        fi
+    else
+        # Production mode - copy files
+        if [[ -d "src" ]]; then
+            cp -r src "$INSTALL_DIR/"
+            chown -R "$INSTALL_USER:$INSTALL_USER" "$INSTALL_DIR"
+        else
+            print_error "Source directory not found. Run from BathyCat project root."
+            exit 1
+        fi
+    fi
+    
+    # Make main script executable
+    chmod +x "$INSTALL_DIR/src/main.py"
+    
+    print_success "BathyCat software installed"
+}
+
+# Function to install configuration
+install_configuration() {
+    print_status "Installing configuration..."
+    
+    # Copy configuration file
+    if [[ -f "config/bathycat_config.json" ]]; then
+        cp "config/bathycat_config.json" "$CONFIG_DIR/config.json"
+        
+        # Update paths in config for production
+        if [[ "$DEV_MODE" == false ]]; then
+            sed -i 's|"/var/log/bathycat/bathycat.log"|"/var/log/bathycat/bathycat.log"|g' "$CONFIG_DIR/config.json"
+            sed -i 's|"/media/usb-storage/bathycat"|"/media/usb-storage/bathycat"|g' "$CONFIG_DIR/config.json"
+        fi
+        
+        chown "$INSTALL_USER:$INSTALL_USER" "$CONFIG_DIR/config.json"
+        chmod 644 "$CONFIG_DIR/config.json"
+    else
+        print_warning "Configuration file not found, creating default..."
+        create_default_config
+    fi
+    
+    print_success "Configuration installed"
+}
+
+# Function to create default configuration
+create_default_config() {
+    cat > "$CONFIG_DIR/config.json" << EOF
+{
+  "capture_fps": 4.0,
+  "require_gps_fix": false,
+  "gps_fix_timeout": 300.0,
+  
+  "camera_device_id": 0,
+  "camera_width": 1920,
+  "camera_height": 1080,
+  "camera_fps": 30,
+  "camera_format": "MJPG",
+  "camera_auto_exposure": true,
+  "camera_auto_white_balance": true,
+  "camera_contrast": 50,
+  "camera_saturation": 60,
+  "camera_exposure": -6,
+  "camera_white_balance": 4000,
+  
+  "gps_port": "/dev/ttyUSB0",
+  "gps_baudrate": 9600,
+  "gps_timeout": 1.0,
+  "gps_time_sync": true,
+  
+  "image_format": "JPEG",
+  "jpeg_quality": 85,
+  "enable_metadata": true,
+  "enable_preview": false,
+  "preview_width": 320,
+  
+  "storage_base_path": "/media/usb-storage/bathycat",
+  "min_free_space_gb": 5.0,
+  "auto_cleanup_enabled": true,
+  "cleanup_threshold_gb": 10.0,
+  "days_to_keep": 30,
+  
+  "led_power_pin": 18,
+  "led_gps_pin": 23,
+  "led_camera_pin": 24,
+  "led_error_pin": 25,
+  
+  "log_level": "INFO",
+  "log_to_file": true,
+  "log_file_path": "/var/log/bathycat/bathycat.log",
+  "log_max_size_mb": 100,
+  "log_backup_count": 5,
+  
+  "auto_start": true,
+  "watchdog_enabled": true,
+  "status_report_interval": 30
+}
 EOF
-    
-    udevadm control --reload-rules
-    
-    print_success "Camera configured"
+    chown "$INSTALL_USER:$INSTALL_USER" "$CONFIG_DIR/config.json"
 }
 
-# Configure GPS
-configure_gps() {
-    print_status "Configuring USB GPS..."
-    
-    # Add user to dialout group for USB serial access
-    usermod -a -G dialout "$USER"
-    
-    # Create udev rule for GPS device
-    cat > /etc/udev/rules.d/99-bathycat-gps.rules << EOF
-# BathyCat USB GPS
-SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="gps-usb"
-SUBSYSTEM=="tty", ATTRS{product}=="*GPS*", SYMLINK+="gps-usb"
-EOF
-    
-    udevadm control --reload-rules
-    
-    print_success "GPS configured"
-}
-
-# Create systemd service
-create_service() {
+# Function to create systemd service
+create_systemd_service() {
     print_status "Creating systemd service..."
     
     cat > "/etc/systemd/system/$SERVICE_NAME.service" << EOF
@@ -200,132 +403,205 @@ Wants=network.target
 
 [Service]
 Type=simple
-User=$USER
-Group=$USER
+User=$INSTALL_USER
+Group=$INSTALL_USER
 WorkingDirectory=$INSTALL_DIR
 Environment=PYTHONPATH=$INSTALL_DIR
-Environment=PATH=$INSTALL_DIR/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ExecStartPre=/bin/sleep 10
-ExecStart=$INSTALL_DIR/venv/bin/python3 $INSTALL_DIR/bathycat_imager.py --config $CONFIG_DIR/config.json --verbose
-ExecReload=/bin/kill -HUP \$MAINPID
-KillMode=process
+ExecStart=$PYTHON_ENV/bin/python -m bathycat.main --config $CONFIG_DIR/config.json
 Restart=always
-RestartSec=30
-TimeoutStartSec=60
-TimeoutStopSec=30
-
-# Logging
+RestartSec=10
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=bathycat-imager
+SyslogIdentifier=bathycat
 
-# Resource limits
-LimitNOFILE=65536
-LimitNPROC=4096
-
-# Security (relaxed for hardware access)
+# Security settings
 NoNewPrivileges=yes
 PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=$LOG_DIR /media
+DeviceAllow=/dev/video* rw
+DeviceAllow=/dev/ttyUSB* rw
+DeviceAllow=/dev/ttyACM* rw
+
+# Resource limits
+MemoryLimit=512M
+CPUQuota=50%
+
+# Watchdog
+WatchdogSec=60
 
 [Install]
 WantedBy=multi-user.target
 EOF
     
+    # Reload systemd
     systemctl daemon-reload
-    systemctl enable "$SERVICE_NAME"
     
-    print_success "Service created and enabled"
+    print_success "Systemd service created"
 }
 
-# Create utility scripts
-create_utilities() {
-    print_status "Creating utility scripts..."
+# Function to configure log rotation
+setup_log_rotation() {
+    print_status "Setting up log rotation..."
     
-    # Status script
-    cat > "$INSTALL_DIR/status.sh" << 'EOF'
-#!/bin/bash
-echo "=== BathyCat System Status ==="
-echo ""
-echo "Service Status:"
-systemctl status bathycat-imager --no-pager || true
-echo ""
-echo "USB Storage:"
-df -h /media/usb-storage 2>/dev/null || echo "Not mounted"
-echo ""
-echo "USB Devices:"
-lsusb | grep -E "(camera|GPS|storage)" || lsusb | head -5
-echo ""
-echo "Recent Logs:"
-journalctl -u bathycat-imager --no-pager -n 5 || true
+    cat > "/etc/logrotate.d/bathycat" << EOF
+$LOG_DIR/*.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    create 644 $INSTALL_USER $INSTALL_USER
+    postrotate
+        systemctl reload-or-restart $SERVICE_NAME
+    endscript
+}
 EOF
     
-    chmod +x "$INSTALL_DIR/status.sh"
-    
-    print_success "Utility scripts created"
+    print_success "Log rotation configured"
 }
 
-# Run tests
+# Function to configure USB storage auto-mount
+setup_usb_automount() {
+    print_status "Setting up USB storage auto-mount..."
+    
+    # Create mount point
+    mkdir -p /media/usb-storage
+    
+    # Add to fstab for auto-mount (optional)
+    if ! grep -q "usb-storage" /etc/fstab; then
+        echo "# BathyCat USB Storage" >> /etc/fstab
+        echo "# LABEL=BATHYCAT /media/usb-storage auto defaults,user,noauto 0 0" >> /etc/fstab
+    fi
+    
+    # Create udev rule for auto-mount
+    cat > "/etc/udev/rules.d/99-bathycat-storage.rules" << EOF
+# BathyCat USB Storage Auto-mount
+SUBSYSTEM=="block", ATTRS{idVendor}=="*", ATTRS{idProduct}=="*", \
+ACTION=="add", KERNEL=="sd[a-z][0-9]", \
+RUN+="/bin/mkdir -p /media/usb-storage", \
+RUN+="/bin/mount -o defaults,uid=$INSTALL_USER,gid=$INSTALL_USER %N /media/usb-storage"
+
+SUBSYSTEM=="block", ATTRS{idVendor}=="*", ATTRS{idProduct}=="*", \
+ACTION=="remove", KERNEL=="sd[a-z][0-9]", \
+RUN+="/bin/umount /media/usb-storage"
+EOF
+    
+    # Reload udev rules
+    udevadm control --reload-rules
+    
+    print_success "USB auto-mount configured"
+}
+
+# Function to run tests
 run_tests() {
     print_status "Running system tests..."
     
     # Test Python environment
-    if sudo -u "$USER" "$INSTALL_DIR/venv/bin/python3" -c "import cv2, serial, numpy; print('✅ Python dependencies OK')"; then
-        print_success "Python environment test passed"
-    else
-        print_warning "Python environment test failed"
+    if ! sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/python" -c "import sys; sys.path.append('$INSTALL_DIR/src'); import main; print('BathyCat import successful')"; then
+        print_error "Python import test failed"
+        return 1
     fi
     
-    # Test camera
-    if lsusb | grep -i camera >/dev/null; then
-        print_success "USB camera detected"
-    else
-        print_warning "No USB camera detected"
+    # Test configuration
+    if ! sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/python" -c "import sys; sys.path.append('$INSTALL_DIR/src'); from main import BathyCatService; print('Configuration test passed')"; then
+        print_warning "Configuration test failed - check hardware connections"
     fi
     
-    # Test GPS
-    if ls /dev/ttyUSB* /dev/ttyACM* >/dev/null 2>&1; then
-        print_success "USB serial devices found (likely GPS)"
+    print_success "System tests completed"
+}
+
+# Function to enable and start service
+enable_service() {
+    print_status "Enabling and starting BathyCat imaging service..."
+    
+    # Enable service
+    systemctl enable "$SERVICE_NAME"
+    
+    # Start service
+    systemctl start "$SERVICE_NAME"
+    
+    # Check status
+    sleep 3
+    if systemctl is-active --quiet "$SERVICE_NAME"; then
+        print_success "BathyCat imaging service is running"
     else
-        print_warning "No USB serial devices found"
+        print_warning "BathyCat imaging service failed to start - check logs with: journalctl -u $SERVICE_NAME"
     fi
 }
 
-# Main installation
+# Function to show installation summary
+show_summary() {
+    print_success "BathyCat installation completed!"
+    
+    echo
+    echo "Installation Summary:"
+    echo "===================="
+    echo "Install Directory: $INSTALL_DIR"
+    echo "Configuration:     $CONFIG_DIR/config.json"
+    echo "Log Directory:     $LOG_DIR"
+    echo "Service Name:      $SERVICE_NAME"
+    echo "Python Environment: $PYTHON_ENV"
+    echo
+    echo "Useful Commands:"
+    echo "==============="
+    echo "Check service status:    systemctl status $SERVICE_NAME"
+    echo "View logs:              journalctl -u $SERVICE_NAME -f"
+    echo "Restart service:        sudo systemctl restart $SERVICE_NAME"
+    echo "Stop service:           sudo systemctl stop $SERVICE_NAME"
+    echo "Edit configuration:     sudo nano $CONFIG_DIR/config.json"
+    echo
+    echo "Next Steps:"
+    echo "==========="
+    echo "1. Connect USB camera and GPS device"
+    echo "2. Insert USB storage device"
+    echo "3. Check service logs for any errors"
+    echo "4. Test image capture functionality"
+    echo
+    
+    if [[ "$DEV_MODE" == true ]]; then
+        print_warning "Development mode enabled - changes to source code will take effect immediately"
+    fi
+}
+
+# Main installation function
 main() {
-    echo "🚀 BathyCat Seabed Imager Installation"
-    echo "====================================="
-    echo ""
+    echo "BathyCat Seabed Imager Installation Script"
+    echo "=========================================="
+    echo
     
+    parse_args "$@"
     check_root
-    update_system
-    install_dependencies
-    create_directories
-    copy_application
-    create_venv
-    configure_camera
-    configure_gps
-    create_service
-    create_utilities
-    run_tests
     
-    echo ""
-    print_success "Installation completed successfully!"
-    echo ""
-    print_status "Next steps:"
-    echo "1. Reboot the system: sudo reboot"
-    echo "2. Connect USB devices (camera, GPS, storage)"
-    echo "3. Set up USB storage: sudo $INSTALL_DIR/setup_usb_storage.sh"
-    echo "4. Start the service: sudo systemctl start $SERVICE_NAME"
-    echo "5. Check status: $INSTALL_DIR/status.sh"
-    echo "6. View logs: journalctl -u $SERVICE_NAME -f"
-    echo ""
+    if [[ "$UPDATE_MODE" == true ]]; then
+        print_status "Running in update mode"
+        # Stop service during update
+        systemctl stop "$SERVICE_NAME" || true
+    fi
+    
+    detect_raspberry_pi
+    update_system
+    install_system_dependencies
+    setup_directories
+    setup_python_environment
+    install_python_dependencies
+    install_bathycat
+    install_configuration
+    create_systemd_service
+    setup_log_rotation
+    setup_usb_automount
+    
+    if [[ "$UPDATE_MODE" == false ]]; then
+        run_tests
+    fi
+    
+    enable_service
+    show_summary
+    
+    print_success "Installation complete!"
 }
 
-# Check if we're in the right directory
-if [ ! -f "src/bathycat_imager.py" ]; then
-    print_error "Please run this script from the BathyCat project directory"
-    exit 1
-fi
-
-# Run main installation
+# Run main function with all arguments
 main "$@"

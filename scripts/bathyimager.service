@@ -1,0 +1,71 @@
+[Unit]
+Description=BathyCat Seabed Imager Service
+Documentation=https://github.com/Mike-Bollinger/BathyCat-Seabed-Imager
+After=network.target multi-user.target
+Wants=network.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/opt/bathycat/src
+Environment=PYTHONPATH=/opt/bathycat/src
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/bin/sleep 10
+ExecStart=/opt/bathycat/venv/bin/python -m main --config /etc/bathycat/config.json
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=bathyimager
+
+# Security settings
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/bathycat /etc/bathycat /var/log/bathycat /media /mnt
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RemoveIPC=true
+
+# Resource limits
+MemoryHigh=512M
+MemoryMax=1G
+TasksMax=100
+
+# Capability restrictions
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN CAP_SETGID CAP_SETUID
+AmbientCapabilities=CAP_DAC_OVERRIDE CAP_FOWNER
+
+# Device access (for camera and GPS)
+DeviceAllow=/dev/video* rw
+DeviceAllow=/dev/ttyUSB* rw
+DeviceAllow=/dev/ttyACM* rw
+DeviceAllow=/dev/serial* rw
+DevicePolicy=closed
+
+# Network restrictions
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# System call filtering
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# File system restrictions
+ProtectProc=invisible
+ProcSubset=pid
+
+[Install]
+WantedBy=multi-user.target
+Alias=bathycat-imager.service

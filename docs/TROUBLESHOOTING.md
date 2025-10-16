@@ -1,826 +1,657 @@
-# BathyCat Seabed Imager - Troubleshooting Guide
+# BathyCat Troubleshooting Guide
 
 This guide helps diagnose and resolve common issues with the BathyCat Seabed Imager system.
 
-## Table of Contents
-
-1. [Quick Diagnostics](#quick-diagnostics)
-2. [GPS Issues](#gps-issues)
-3. [Camera Problems](#camera-problems)
-4. [Storage Issues](#storage-issues)
-5. [Service and Software Issues](#service-and-software-issues)
-6. [Power and Hardware Problems](#power-and-hardware-problems)
-7. [Performance Issues](#performance-issues)
-8. [Network and Communication](#network-and-communication)
-
----
-
 ## Quick Diagnostics
 
-### System Status Check
-
-Run the comprehensive status check script:
-
+### System Health Check
 ```bash
-# Check overall system status
-/opt/bathycat/status.sh
-
 # Check service status
-sudo systemctl status bathycat-imager
+sudo systemctl status bathycat
 
 # View recent logs
-journalctl -u bathycat-imager --no-pager -n 20
+sudo journalctl -u bathycat --since "1 hour ago"
+
+# Check hardware detection
+cd /opt/bathycat/src && sudo python3 -m config --show-hardware
+
+# Validate configuration
+cd /opt/bathycat/src && sudo python3 -m config --validate
+
+# Check disk usage
+df -h /media/usb
 ```
 
-### Common Status Indicators
-
-| LED Pattern | Meaning | Action |
-|-------------|---------|--------|
-| Solid Green | GPS Fix + Camera Active | Normal operation |
-| Blinking Green | GPS searching | Wait for fix or check antenna |
-| Solid Red | Critical error | Check logs and hardware |
-| Blinking Red | Storage critical | Check disk space |
-| No LEDs | No power or boot failure | Check power and SD card |
-
----
-
-## Installation Issues
-
-### Problem: Package Installation Failures
-
-**Symptoms:**
-- `Package 'libatlas-base-dev' has no installation candidate`
-- `Package 'exfat-utils' has no installation candidate`
-- Installation script fails during dependency installation
-
-**Cause:**
-Package names have changed in newer Debian versions (Trixie/Bookworm).
-
-**Solutions:**
-
-1. **Use Updated Installation Script**
-   ```bash
-   # Pull latest version with updated package names
-   git pull origin main
-   sudo scripts/install.sh
-   ```
-
-2. **Manual Package Installation (if needed)**
-   ```bash
-   # Install updated package names
-   sudo apt install -y libopenblas-dev exfatprogs
-   
-   # Legacy packages for older systems (if above fails)
-   sudo apt install -y libatlas-base-dev exfat-utils
-   ```
-
-3. **Package Name Reference**
-   | Old Package | New Package | Purpose |
-   |-------------|-------------|---------|
-   | `libatlas-base-dev` | `libopenblas-dev` | BLAS/LAPACK math libraries |
-   | `exfat-utils` | `exfatprogs` | exFAT filesystem utilities |
-
----
-
-## GPS Issues
-
-### Problem: GPS Not Acquiring Fix
-
-**Symptoms:**
-- "No GPS Fix" in status
-- GPS timeout errors in logs
-- Service fails to start
-
-**Diagnostic Steps:**
-
-1. **Check Hardware Connections**
-   ```bash
-   # Verify USB GPS is detected
-   lsusb | grep -i adafruit
-   
-   # Check USB serial ports
-   ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null || echo "No USB serial devices found"
-   
-   # Test GPS communication
-   sudo cat /dev/ttyUSB0    # Adjust port as needed
-   # Should see NMEA sentences like $GPGGA...
-   # Press Ctrl+C to stop
-   ```
-
-2. **Test GPS Service** 
-   ```bash
-   # Stop main service
-   sudo systemctl stop bathycat-imager
-   
-   # Check GPS auto-detection
-   python3 -c "
-   import serial.tools.list_ports
-   for port in serial.tools.list_ports.comports():
-       if 'USB' in port.description or 'GPS' in port.description:
-           print(f'Found GPS: {port.device} - {port.description}')
-   "
-   
-   # Test direct communication
-   python3 -c "
-   import serial
-   gps = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)  # Adjust port
-   for i in range(5):
-       print(gps.readline().decode('ascii', errors='ignore').strip())
-   gps.close()
-   "
-   ```
-
-3. **Check Antenna and Fix Status**
-   ```bash
-   # Monitor GPS data in real-time
-   sudo timeout 30 cat /dev/ttyUSB0 | grep 'GGA\|RMC'
-   
-   # Look for fix indicators in NMEA sentences:
-   # $GPGGA: field 6 should be > 0 (GPS quality)
-   # $GPRMC: field 2 should be 'A' (valid fix)
-   ```
-
-**Solutions:**
-
-1. **Port Detection Issues**
-   ```bash
-   # If GPS port changes, update config
-   sudo nano /etc/bathycat/config.json
-   # Set specific port instead of "auto":
-   # "gps_port": "/dev/ttyUSB0"
-   
-   # For permanent USB port assignment
-   # Find GPS device info
-   udevadm info -a -n /dev/ttyUSB0 | grep -E 'ATTRS{serial}|ATTRS{idVendor}|ATTRS{idProduct}'
-   
-   # Create udev rule for consistent naming
-   sudo nano /etc/udev/rules.d/99-gps.rules
-   # Add rule like:
-   # SUBSYSTEM=="tty", ATTRS{idVendor}=="239a", ATTRS{idProduct}=="8015", SYMLINK+="gps"
-   # Then use "/dev/gps" as port
-   ```
-
-2. **USB Power Issues**
-   ```bash
-   # Check USB power management
-   echo 'on' | sudo tee /sys/bus/usb/devices/*/power/control
-   
-   # Disable USB selective suspend
-   sudo nano /boot/config.txt
-   # Add: usb_max_current=1
-   
-   # Or disable power management permanently
-   sudo nano /etc/modprobe.d/usb-no-suspend.conf
-   # Add: options usbcore autosuspend=-1
-   ```
-
-3. **GPS Configuration Issues**
-   ```bash
-   # Reset GPS to factory defaults (if supported)
-   echo -e '\$PMTK104*37\r\n' | sudo tee /dev/ttyUSB0
-   
-   # Set GPS update rate (1 Hz = 1000ms)
-   echo -e '\$PMTK220,1000*1F\r\n' | sudo tee /dev/ttyUSB0
-   
-   # Enable specific NMEA sentences
-   echo -e '\$PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*28\r\n' | sudo tee /dev/ttyUSB0
-   ```
-
-### Problem: GPS Fix Lost During Operation
-
-**Symptoms:**
-- Intermittent GPS loss
-- Position jumping
-- Time sync errors
-
-**Solutions:**
-
-1. **Check Power Supply**
-   ```bash
-   # Monitor voltage during operation
-   vcgencmd measure_volts
-   # Should be close to 1.2V (core), 3.3V (sdram)
-   
-   # Check for voltage drops under load
-   ```
-
-2. **Improve Signal Reception**
-   ```bash
-   # Check satellite count
-   cgps -s
-   # Need minimum 4 satellites for 3D fix
-   
-   # Consider GPS antenna upgrade
-   # Move antenna to higher position
-   ```
-
----
-
-## Camera Problems
-
-### Problem: Camera Not Detected
-
-**Symptoms:**
-- Camera initialization failed in logs
-- No video device found
-- USB device not recognized
-
-**Diagnostic Steps:**
-
-1. **Check USB Connection**
-   ```bash
-   # List USB devices
-   lsusb
-   # Should see camera device
-   
-   # Check video devices
-   ls /dev/video*
-   
-   # Get device details
-   v4l2-ctl --list-devices
-   ```
-
-2. **Test Camera Directly**
-   ```bash
-   # Simple capture test
-   fswebcam -d /dev/video0 test.jpg
-   
-   # Check supported formats
-   v4l2-ctl -d /dev/video0 --list-formats-ext
-   ```
-
-**Solutions:**
-
-1. **USB Issues**
-   ```bash
-   # Try different USB port
-   # Check USB cable integrity
-   # Test with shorter cable
-   
-   # Check USB power
-   # High-resolution cameras need USB 3.0
-   ```
-
-2. **Driver Issues**
-   ```bash
-   # Update system
-   sudo apt update && sudo apt upgrade
-   
-   # Install V4L2 utils
-   sudo apt install v4l-utils
-   
-   # Check kernel modules
-   lsmod | grep uvcvideo
-   ```
-
-### Problem: Poor Image Quality
-
-**Symptoms:**
-- Blurry images
-- Wrong colors underwater
-- Dark or overexposed images
-
-**Solutions:**
-
-1. **Underwater Optimization**
-   ```python
-   # Adjust camera settings in config.json
-   {
-     "camera_auto_exposure": false,
-     "camera_exposure": -6,
-     "camera_auto_white_balance": false,
-     "camera_white_balance": 4000,
-     "camera_contrast": 60,
-     "camera_saturation": 70
-   }
-   ```
-
-2. **Focus Adjustment**
-   ```bash
-   # Manual focus (if supported)
-   v4l2-ctl -d /dev/video0 --set-ctrl=focus_auto=0
-   v4l2-ctl -d /dev/video0 --set-ctrl=focus_absolute=50
-   
-   # Check focus through water
-   # Objects appear 25% closer underwater
-   ```
-
-### Problem: Low Frame Rate
-
-**Symptoms:**
-- Capture rate below target 4 FPS
-- Frame drops in logs
-- Performance warnings
-
-**Solutions:**
-
-1. **USB Bandwidth**
-   ```bash
-   # Check USB version
-   lsusb -t
-   # Ensure camera on USB 3.0 port
-   
-   # Reduce resolution if needed
-   # Lower JPEG quality slightly
-   ```
-
-2. **System Performance**
-   ```bash
-   # Monitor CPU usage
-   htop
-   
-   # Check I/O wait
-   iostat -x 1
-   
-   # Optimize performance
-   sudo systemctl disable unnecessary-service
-   ```
-
----
-
-## Storage Issues
-
-### Problem: Storage Mount Failure
-
-**Symptoms:**
-- "Storage initialization failed"
-- /media/usb-storage not accessible
-- Permission denied errors
-
-**Diagnostic Steps:**
-
-1. **Check Mount Status**
-   ```bash
-   # Check if mounted
-   mount | grep usb-storage
-   
-   # Check filesystem
-   sudo fsck /dev/sda1
-   
-   # Check fstab entry
-   cat /etc/fstab | grep usb-storage
-   ```
-
-**Solutions:**
-
-1. **Manual Mount**
-   ```bash
-   # Create mount point
-   sudo mkdir -p /media/usb-storage
-   
-   # Mount manually
-   sudo mount /dev/sda1 /media/usb-storage
-   
-   # Fix permissions
-   sudo chown -R pi:pi /media/usb-storage
-   ```
-
-2. **Fstab Configuration**
-   ```bash
-   # Get UUID
-   sudo blkid /dev/sda1
-   
-   # Add to fstab
-   echo "UUID=your-uuid /media/usb-storage ext4 defaults,noatime 0 2" | sudo tee -a /etc/fstab
-   
-   # Test mount
-   sudo mount -a
-   ```
-
-### Problem: Disk Space Critical
-
-**Symptoms:**
-- Low disk space warnings
-- Auto-cleanup activated
-- Write failures
-
-**Solutions:**
-
-1. **Immediate Cleanup**
-   ```bash
-   # Check space
-   df -h /media/usb-storage
-   
-   # Manual cleanup
-   sudo find /media/usb-storage/bathycat/images -type f -mtime +7 -delete
-   
-   # Clear logs
-   sudo journalctl --vacuum-time=2d
-   ```
-
-2. **Configure Auto-Cleanup**
-   ```json
-   // In config.json
-   {
-     "auto_cleanup_enabled": true,
-     "cleanup_threshold_gb": 10.0,
-     "days_to_keep": 15
-   }
-   ```
-
----
-
-## Service and Software Issues
-
-### Problem: Service Won't Start
-
-**Symptoms:**
-- Service fails on boot
-- "Active: failed" status
-- Python errors in logs
-
-**Diagnostic Steps:**
-
-1. **Check Service Status**
-   ```bash
-   sudo systemctl status bathycat-imager
-   
-   # View detailed logs
-   journalctl -u bathycat-imager --no-pager
-   
-   # Check service file
-   cat /etc/systemd/system/bathycat-imager.service
-   ```
-
-2. **Test Manual Start**
-   ```bash
-   # Try manual start
-   cd /opt/bathycat
-   source venv/bin/activate
-   python3 src/bathycat_imager.py --config /etc/bathycat/config.json --verbose
-   ```
-
-**Solutions:**
-
-1. **Permission Issues**
-   ```bash
-   # Fix ownership
-   sudo chown -R pi:pi /opt/bathycat
-   
-   # Fix permissions
-   chmod +x /opt/bathycat/src/bathycat_imager.py
-   ```
-
-2. **Python Environment**
-   ```bash
-   # Reinstall virtual environment
-   sudo rm -rf /opt/bathycat/venv
-   sudo python3 -m venv /opt/bathycat/venv
-   source /opt/bathycat/venv/bin/activate
-   pip install --upgrade pip
-   pip install opencv-python numpy pillow pyserial pynmea2 psutil piexif
-   ```
-
-### Problem: Configuration Errors
-
-**Symptoms:**
-- "Configuration validation failed"
-- Invalid parameter errors
-- Service exits immediately
-
-**Solutions:**
-
-1. **Validate Configuration**
-   ```bash
-   # Check JSON syntax
-   python3 -m json.tool /etc/bathycat/config.json
-   
-   # Reset to defaults
-   sudo cp /opt/bathycat/config/bathycat_config.json /etc/bathycat/config.json
-   ```
-
-2. **Common Configuration Fixes**
-   ```json
-   {
-     "capture_fps": 4.0,           // Must be positive number
-     "camera_device_id": 0,        // Check with v4l2-ctl --list-devices
-     "storage_base_path": "/media/usb-storage/bathycat",  // Must exist
-     "gps_port": "auto"            // Or specific port like "/dev/ttyUSB0"
-   }
-   ```
-
----
-
-## Power and Hardware Problems
-
-### Problem: System Randomly Reboots
-
-**Symptoms:**
-- Unexpected system restarts
-- Power-related log entries
-- USB devices disconnecting
-
-**Diagnostic Steps:**
-
-1. **Check Power Supply**
-   ```bash
-   # Check voltage
-   vcgencmd measure_volts
-   
-   # Monitor for under-voltage
-   vcgencmd get_throttled
-   # 0x0 = good, other values indicate throttling
-   
-   # Check power events in logs
-   grep -i power /var/log/syslog
-   ```
-
-**Solutions:**
-
-1. **Power Supply Upgrade**
-   ```bash
-   # Use official Raspberry Pi power supply (5V/3A)
-   # Or marine-grade equivalent with same specs
-   # Ensure adequate current capacity for all devices
-   ```
-
-2. **USB Power Management**
-   ```bash
-   # Disable USB autosuspend
-   echo 'SUBSYSTEM=="usb", ACTION=="add", ATTR{idVendor}=="*", ATTR{idProduct}=="*", TEST=="power/control", ATTR{power/control}="on"' | sudo tee /etc/udev/rules.d/50-usb-power.rules
-   ```
-
-### Problem: Overheating
-
-**Symptoms:**
-- High CPU temperature (>80°C)
-- Thermal throttling messages
-- Performance degradation
-
-**Solutions:**
-
-1. **Cooling Improvements**
-   ```bash
-   # Check current temperature
-   vcgencmd measure_temp
-   
-   # Install larger heat sinks
-   # Add case fan if possible
-   # Improve ventilation
-   ```
-
-2. **Performance Optimization**
-   ```bash
-   # Reduce GPU memory split
-   echo "gpu_mem=64" | sudo tee -a /boot/config.txt
-   
-   # Lower CPU governor
-   echo "performance" | sudo tee /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
-   ```
-
----
-
-## Performance Issues
-
-### Problem: Slow Capture Rate
-
-**Symptoms:**
-- FPS below target
-- High processing times
-- CPU overload
-
-**Diagnostic Steps:**
-
-1. **Performance Monitoring**
-   ```bash
-   # Monitor real-time performance
-   htop
-   
-   # Check I/O performance
-   sudo iotop
-   
-   # Monitor capture statistics
-   tail -f /var/log/bathycat/bathycat.log | grep "FPS"
-   ```
-
-**Solutions:**
-
-1. **System Optimization**
-   ```bash
-   # Disable unnecessary services
-   sudo systemctl disable bluetooth
-   sudo systemctl disable wifi-country.service
-   
-   # Optimize scheduler
-   echo "deadline" | sudo tee /sys/block/sda/queue/scheduler
-   ```
-
-2. **Application Tuning**
-   ```json
-   // Reduce processing overhead
-   {
-     "enable_preview": false,      // Disable if not needed
-     "jpeg_quality": 80,           // Lower if acceptable
-     "enable_metadata": false      // Disable if not critical
-   }
-   ```
-
----
-
-## Network and Communication
-
-### Problem: SSH Connection Issues
-
-**Symptoms:**
+### LED Status Indicators
+
+| LED | Pattern | Meaning | Action |
+|-----|---------|---------|---------|
+| Status (Green) | Solid | Normal operation | None needed |
+| Status (Green) | Slow blink | Starting/GPS acquiring | Wait for GPS fix |
+| Status (Green) | Off | System stopped | Check service status |
+| Error (Red) | Off | No errors | Normal |
+| Error (Red) | Solid | Critical error | Check logs |
+| Error (Red) | Fast blink | Warning condition | Monitor system |
+| Activity (Blue) | Blink on capture | Image captured | Normal |
+
+## Common Problems
+
+### 1. Service Won't Start
+
+#### Symptoms
+- `systemctl status bathycat` shows failed
+- No LED activity
+- No log entries
+
+#### Diagnosis
+```bash
+# Check detailed service status
+sudo systemctl status bathycat -l
+
+# Check service logs
+sudo journalctl -u bathycat --no-pager
+
+# Test manual startup
+cd /opt/bathycat
+sudo -u bathycat ./venv/bin/python -m bathycat.main
+```
+
+#### Solutions
+
+**Configuration Error:**
+```bash
+# Validate configuration
+cd /opt/bathycat/src && sudo python3 -m config --validate
+
+# Reset to defaults if needed
+cd /opt/bathycat/src && sudo python3 -m config --create-default
+```
+
+**Permission Issues:**
+```bash
+# Fix ownership
+sudo chown -R bathycat:bathycat /var/log/bathycat
+sudo chown -R pi:pi /opt/bathycat
+
+# Fix user groups
+sudo usermod -a -G video,dialout,plugdev bathycat
+```
+
+**Missing Dependencies:**
+```bash
+# Reinstall Python packages
+cd /opt/bathycat
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 2. Camera Not Working
+
+#### Symptoms
+- Error LED solid red
+- Log messages about camera initialization failure
+- No image capture
+
+#### Diagnosis
+```bash
+# Check USB camera detection
+lsusb | grep -i camera
+
+# Check video devices
+ls -la /dev/video*
+
+# Test camera manually
+ffplay /dev/video0
+# Press 'q' to quit
+
+# Check permissions
+groups bathycat | grep video
+```
+
+#### Solutions
+
+**Camera Not Detected:**
+```bash
+# Reconnect USB camera
+sudo dmesg | tail -20
+
+# Check different USB port
+# Verify camera power requirements
+```
+
+**Permission Issues:**
+```bash
+# Add user to video group
+sudo usermod -a -G video bathycat
+sudo systemctl restart bathycat
+```
+
+**Wrong Device Index:**
+```bash
+# Find correct video device
+v4l2-ctl --list-devices
+
+# Update configuration
+sudo nano /etc/bathycat/config.json
+# Set correct device_index
+```
+
+**USB Power Issues:**
+```bash
+# Check USB power config
+echo 'max_usb_current=1' | sudo tee -a /boot/config.txt
+sudo reboot
+```
+
+### 3. GPS Not Working
+
+#### Symptoms
+- Status LED slow blinking (never solid)
+- Log messages about GPS timeout
+- Mock GPS coordinates in images
+
+#### Diagnosis
+```bash
+# Check GPS device detection
+lsusb | grep -i gps
+
+# Check serial devices
+ls -la /dev/ttyUSB* /dev/ttyACM*
+
+# Test GPS data stream
+sudo cat /dev/ttyUSB0
+# Should show NMEA sentences like $GPGGA...
+
+# Check permissions
+groups bathycat | grep dialout
+```
+
+#### Solutions
+
+**GPS Device Not Found:**
+```bash
+# Check USB connection
+sudo dmesg | tail -20
+
+# Try different USB port
+# Check GPS power LED (if available)
+```
+
+**Wrong Serial Port:**
+```bash
+# Find GPS device
+dmesg | grep tty | grep USB
+
+# Update configuration
+sudo nano /etc/bathycat/config.json
+# Set correct port (e.g., "/dev/ttyACM0")
+```
+
+**Permission Issues:**
+```bash
+# Add user to dialout group
+sudo usermod -a -G dialout bathycat
+sudo systemctl restart bathycat
+```
+
+**GPS Signal Issues:**
+```bash
+# Move to open area with sky view
+# Wait 5-10 minutes for cold start
+# Check GPS status with gpsd tools:
+sudo apt install gpsd-clients -y
+cgps -s
+```
+
+**Baud Rate Issues:**
+```bash
+# Try different baud rates in config:
+# Common values: 4800, 9600, 19200, 38400
+sudo nano /etc/bathycat/config.json
+```
+
+### 4. Storage Problems
+
+#### Symptoms
+- Error LED blinking
+- Log messages about storage unavailable
+- No images being saved
+
+#### Diagnosis
+```bash
+# Check USB storage detection
+lsblk
+
+# Check mount status
+mount | grep usb
+
+# Check available space
+df -h /media/usb
+
+# Check permissions
+ls -la /media/usb
+```
+
+#### Solutions
+
+**USB Drive Not Mounted:**
+```bash
+# Manual mount
+sudo mkdir -p /media/usb
+sudo mount /dev/sda1 /media/usb
+
+# Check auto-mount rules
+cat /etc/udev/rules.d/99-bathycat-usb.rules
+
+# Reload udev rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+**Insufficient Space:**
+```bash
+# Clean old files
+sudo find /media/usb -name "*.jpg" -mtime +30 -delete
+
+# Or use larger USB drive
+```
+
+**Permission Issues:**
+```bash
+# Fix permissions
+sudo chown -R bathycat:bathycat /media/usb
+sudo chmod -R 755 /media/usb
+```
+
+**Filesystem Corruption:**
+```bash
+# Check filesystem (unmount first)
+sudo umount /media/usb
+sudo fsck /dev/sda1
+
+# Reformat if needed (WILL ERASE DATA)
+sudo mkfs.ext4 /dev/sda1 -L "BATHYCAT"
+```
+
+### 5. High CPU/Memory Usage
+
+#### Symptoms
+- System sluggish
+- High temperature
+- Capture errors due to performance
+
+#### Diagnosis
+```bash
+# Check system resources
+htop
+
+# Check BathyCat process
+ps aux | grep bathycat
+
+# Check temperature
+vcgencmd measure_temp
+
+# Check capture timing
+sudo journalctl -u bathycat | grep "Capture time"
+```
+
+#### Solutions
+
+**Reduce Camera Resolution:**
+```bash
+sudo nano /etc/bathycat/config.json
+# Set lower resolution (e.g., 1280x720)
+# Reduce FPS if needed
+```
+
+**Increase Capture Interval:**
+```bash
+sudo nano /etc/bathycat/config.json
+# Increase capture_interval (e.g., 2.0 seconds)
+```
+
+**Optimize JPEG Quality:**
+```bash
+sudo nano /etc/bathycat/config.json
+# Reduce jpeg_quality (e.g., 85 instead of 95)
+```
+
+**Cooling Issues:**
+```bash
+# Add heatsink or fan
+# Check case ventilation
+# Reduce overclocking if enabled
+```
+
+### 6. Log File Issues
+
+#### Symptoms
+- Disk full errors
+- Cannot write logs
+- Service stops unexpectedly
+
+#### Diagnosis
+```bash
+# Check log directory space
+du -sh /var/log/bathycat/
+
+# Check log rotation
+ls -la /etc/logrotate.d/bathycat
+
+# Check systemd journal size
+journalctl --disk-usage
+```
+
+#### Solutions
+
+**Log Directory Full:**
+```bash
+# Clean old logs
+sudo find /var/log/bathycat -name "*.log.*" -mtime +7 -delete
+
+# Set up log rotation
+sudo tee /etc/logrotate.d/bathycat << EOF
+/var/log/bathycat/*.log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+    create 644 bathycat bathycat
+}
+EOF
+```
+
+**Journal Too Large:**
+```bash
+# Clean old journal entries
+sudo journalctl --vacuum-time=7d
+sudo journalctl --vacuum-size=100M
+
+# Limit journal size
+sudo nano /etc/systemd/journald.conf
+# Add: SystemMaxUse=100M
+```
+
+### 7. Network/SSH Issues
+
+#### Symptoms
 - Cannot connect via SSH
-- Connection timeouts
-- Authentication failures
-- Pi appears in network scan but ping fails
+- Network configuration problems
+- Remote monitoring not working
 
-**Solutions:**
+#### Diagnosis
+```bash
+# Check network status
+ip addr show
 
-1. **Enable SSH**
-   ```bash
-   # Enable SSH service
-   sudo systemctl enable ssh
-   sudo systemctl start ssh
-   
-   # Check SSH status
-   sudo systemctl status ssh
-   ```
+# Check SSH service
+sudo systemctl status ssh
 
-2. **Network Configuration**
-   ```bash
-   # Check IP address
-   ip addr show
-   
-   # Test connectivity
-   ping 8.8.8.8
-   
-   # Check SSH configuration
-   sudo nano /etc/ssh/sshd_config
-   ```
+# Check WiFi connection
+iwconfig
+```
 
-3. **Direct Ethernet Connection (Recommended for Troubleshooting)**
+#### Solutions
 
-   When Wi-Fi or network router issues prevent SSH access, establish a direct connection between your computer and the Raspberry Pi.
+**SSH Not Working:**
+```bash
+# Enable SSH service
+sudo systemctl enable ssh
+sudo systemctl start ssh
 
-   **Prerequisites:**
-   - Ethernet cable
-   - SD card accessible on another computer
-   - Pi appears in network scan but doesn't respond to ping
+# Check SSH configuration
+sudo nano /etc/ssh/sshd_config
+```
 
-   **Step 1: Configure Pi Network Settings**
+**WiFi Issues:**
+```bash
+# Configure WiFi
+sudo nano /etc/wpa_supplicant/wpa_supplicant.conf
 
-   Remove the SD card from the Pi and insert it into your computer. You should see a boot partition.
+# Add network:
+# network={
+#     ssid="YourNetworkName"
+#     psk="YourPassword"
+# }
 
-   ```bash
-   # Edit cmdline.txt in the boot partition
-   # Add this to the END of the existing single line (with a space before it):
-   ip=192.168.1.200::192.168.1.1:255.255.255.0::eth0:off
-   
-   # The complete line should look like:
-   # console=serial0,115200 ... rootwait ip=192.168.1.200::192.168.1.1:255.255.255.0::eth0:off
-   ```
+# Restart networking
+sudo systemctl restart networking
+```
 
-   **Step 2: Enable SSH on Pi**
+## Error Codes Reference
 
-   ```bash
-   # In the boot partition, create an empty file named 'ssh' (no extension)
-   # This enables SSH on first boot
-   touch ssh
-   ```
+| Code | Description | Cause | Solution |
+|------|-------------|-------|----------|
+| E001 | Camera initialization failed | Hardware/driver issue | Check camera connection |
+| E002 | GPS timeout | No GPS signal/device | Check GPS hardware and antenna |
+| E003 | Storage unavailable | USB drive issue | Check drive connection and mount |
+| E004 | Configuration invalid | Bad config file | Validate and fix configuration |
+| E005 | Insufficient disk space | Storage full | Clean files or add storage |
+| E006 | Permission denied | File/device permissions | Fix ownership and permissions |
+| E007 | Service startup failed | System configuration | Check service configuration |
+| E008 | Hardware not detected | USB device missing | Reconnect hardware |
 
-   **Step 3: Configure Computer Network**
+## Advanced Troubleshooting
 
-   Set your computer's Ethernet adapter to use a static IP:
+### Debug Mode
 
-   **Windows:**
-   - Go to Settings → Network & Internet → Ethernet
-   - Click on your Ethernet adapter
-   - Click "Edit" next to "IP assignment"
-   - Change to "Manual" and enable IPv4:
-     - IP address: `192.168.1.1`
-     - Subnet mask: `255.255.255.0`
-     - Leave Gateway blank
-   - Click Save
+Enable debug logging:
+```bash
+sudo nano /etc/bathycat/config.json
+```
 
-   **Linux/macOS:**
-   ```bash
-   # Configure static IP (adjust interface name)
-   sudo ip addr add 192.168.1.1/24 dev eth0
-   sudo ip link set eth0 up
-   ```
+Set logging level to DEBUG:
+```json
+{
+  "logging": {
+    "level": "DEBUG",
+    "console_output": true
+  }
+}
+```
 
-   **Step 4: Physical Connection**
+Restart service:
+```bash
+sudo systemctl restart bathycat
+```
 
-   ```bash
-   # Connect Pi directly to computer with Ethernet cable
-   # Insert SD card back into Pi
-   # Power on Pi and wait 2-3 minutes for boot
-   ```
+### Manual Component Testing
 
-   **Step 5: Test Connection**
+**Test GPS Module:**
+```bash
+cd /opt/bathycat/src
+source ../venv/bin/activate
+python3 -c "
+from gps import GPS
+from config import GPSConfig
 
-   ```bash
-   # Test connectivity
-   ping 192.168.1.200
-   
-   # If ping succeeds, connect via SSH
-   ssh pi@192.168.1.200
-   # Default password: raspberry
-   ```
+config = GPSConfig()
+config.mock_enabled = False  # Use real GPS
+gps = GPS(config)
 
-   **Troubleshooting Direct Connection:**
+if gps.connect():
+    print('GPS connected')
+    fix = gps.wait_for_fix(timeout=30)
+    if fix and fix.valid:
+        print(f'GPS Fix: {fix.latitude}, {fix.longitude}')
+    else:
+        print('No GPS fix obtained')
+else:
+    print('GPS connection failed')
+"
+```
 
-   - **Pi doesn't respond to ping:**
-     - Check Ethernet cable and connections
-     - Verify Pi's power LED is solid and activity LED blinks
-     - Wait longer for boot (up to 5 minutes)
-     - Try different Ethernet cable or port
+**Test Camera Module:**
+```bash
+cd /opt/bathycat/src
+source ../venv/bin/activate
+python3 -c "
+from camera import Camera  
+from config import CameraConfig
 
-   - **Computer shows link-local IP (169.254.x.x):**
-     - Ensure static IP is properly set on computer
-     - Disable DHCP on Ethernet adapter
-     - Restart network adapter
+config = CameraConfig()
+camera = Camera(config)
 
-   - **SSH connection refused:**
-     - Verify `ssh` file exists in boot partition (no extension)
-     - Check if SSH service started: `sudo systemctl status ssh`
-     - Try different SSH client (PuTTY, etc.)
+if camera.initialize():
+    print('Camera initialized')
+    frame = camera.capture_frame()
+    if frame is not None:
+        print('Frame captured successfully')
+        print(f'Frame shape: {frame.shape}')
+    else:
+        print('Frame capture failed')
+    camera.close()
+else:
+    print('Camera initialization failed')
+"
+```
 
-   **Reverting Changes:**
-   
-   To restore normal network operation after troubleshooting:
-   ```bash
-   # Remove IP parameter from cmdline.txt
-   # Re-enable DHCP on computer's Ethernet adapter
-   # Configure Pi for Wi-Fi or normal network as needed
-   ```
+### Performance Monitoring
 
----
+Create monitoring script:
+```bash
+sudo tee /opt/bathycat/monitor.sh << 'EOF'
+#!/bin/bash
+while true; do
+    echo "$(date): CPU: $(vcgencmd measure_temp) Memory: $(free -m | awk 'NR==2{printf "%.1f%%\n", $3*100/$2}')"
+    sleep 60
+done
+EOF
 
-## Emergency Recovery
+chmod +x /opt/bathycat/monitor.sh
+```
 
-### Boot Issues
+Run monitoring:
+```bash
+./monitor.sh | tee performance.log
+```
 
-1. **SD Card Recovery**
-   ```bash
-   # Remove SD card and check on another computer
-   # Run filesystem check
-   # Re-flash if corrupted
-   ```
+### System Recovery
 
-2. **Safe Mode Boot**
-   ```bash
-   # Add to cmdline.txt for recovery boot
-   # systemd.unit=rescue.target
-   ```
+**Safe Mode Startup:**
+```bash
+# Stop service
+sudo systemctl stop bathycat
 
-### Factory Reset
+# Create minimal config
+sudo tee /etc/bathycat/config.json << EOF
+{
+  "version": "1.0",
+  "system": {"environment": "development"},
+  "gps": {"mock_enabled": true},
+  "leds": {"enabled": false},
+  "logging": {"level": "DEBUG", "console_output": true}
+}
+EOF
 
-1. **Clean Reinstall**
-   ```bash
-   # Backup configuration
-   sudo cp /etc/bathycat/config.json ~/config_backup.json
-   
-   # Remove installation
-   sudo rm -rf /opt/bathycat
-   sudo rm -f /etc/systemd/system/bathycat-imager.service
-   
-   # Run installer again
-   sudo ./scripts/install.sh
-   
-   # Restore configuration
-   sudo cp ~/config_backup.json /etc/bathycat/config.json
-   ```
+# Test manually
+cd /opt/bathycat/src
+sudo -u bathycat ../venv/bin/python -m main
+```
 
----
+**Factory Reset:**
+```bash
+# Complete system reset
+sudo ./scripts/install.sh --reset
+
+# Or manual reset:
+sudo systemctl stop bathycat
+sudo rm -rf /opt/bathycat
+sudo rm -rf /etc/bathycat
+sudo rm /etc/systemd/system/bathycat.service
+# Then reinstall
+```
+
+## Preventive Maintenance
+
+### Regular Checks (Weekly)
+```bash
+# System health
+sudo systemctl status bathycat
+df -h /media/usb
+vcgencmd measure_temp
+
+# Log review
+sudo journalctl -u bathycat --since "1 week ago" | grep ERROR
+
+# Hardware check
+lsusb
+ls /dev/video* /dev/ttyUSB*
+```
+
+### Monthly Maintenance
+```bash
+# Update system
+sudo apt update && sudo apt upgrade -y
+
+# Check for BathyCat updates
+sudo ./scripts/bathycat-update --check
+
+# Clean logs
+sudo journalctl --vacuum-time=30d
+
+# Check storage
+du -sh /media/usb/*
+```
+
+### Backup Procedures
+```bash
+# Backup configuration
+sudo cp /etc/bathycat/config.json ~/bathycat-config-backup.json
+
+# Backup images (to external storage)
+rsync -av /media/usb/ /external/backup/bathycat-images/
+
+# System backup (if needed)
+sudo dd if=/dev/mmcblk0 of=/external/pi-backup.img bs=4M status=progress
+```
 
 ## Getting Help
 
-### Log Collection
+### Information to Collect
+Before seeking help, collect:
 
-When reporting issues, collect these logs:
+1. **System Information:**
+   ```bash
+   uname -a
+   cat /etc/os-release
+   python3 --version
+   ```
 
-```bash
-# System information
-uname -a > system_info.txt
-lsusb >> system_info.txt
-lsblk >> system_info.txt
+2. **Service Status:**
+   ```bash
+   sudo systemctl status bathycat
+   ```
 
-# Service logs
-journalctl -u bathycat-imager --no-pager > service_logs.txt
+3. **Recent Logs:**
+   ```bash
+   sudo journalctl -u bathycat --since "1 hour ago"
+   ```
 
-# Configuration
-sudo cp /etc/bathycat/config.json config_copy.json
+4. **Hardware Status:**
+   ```bash
+   lsusb
+   ls /dev/video* /dev/ttyUSB*
+   df -h
+   ```
 
-# Hardware status
-/opt/bathycat/status.sh > status_output.txt
+5. **Configuration:**
+   ```bash
+   sudo cat /etc/bathycat/config.json
+   ```
 
-# Create support package
-tar -czf bathycat_support_$(date +%Y%m%d_%H%M%S).tar.gz \
-    system_info.txt service_logs.txt config_copy.json status_output.txt
-```
+### Support Channels
+- **GitHub Issues**: For bugs and feature requests
+- **Documentation**: Check README.md and INSTALL.md  
+- **Community**: GitHub Discussions for general help
 
-### Contact Support
+### Emergency Recovery
+If system is completely unresponsive:
 
-- **GitHub Issues**: [Project Repository]
-- **Documentation**: Check docs/ directory
-- **Community Forum**: [Link if available]
+1. **Hardware Reset**: Power cycle the Raspberry Pi
+2. **SSH Recovery**: Connect via SSH and check logs
+3. **SD Card Recovery**: Remove SD card and check filesystem on another computer
+4. **Fresh Install**: Reinstall system from backup or start over
 
-Include the support package and detailed description of:
-- What you were trying to do
-- What happened instead
-- When the problem started
-- Any recent changes to the system
+Remember: Most issues are resolved by checking connections, permissions, and configuration files. Start with the simple solutions first!

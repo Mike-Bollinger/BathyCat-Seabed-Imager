@@ -1,299 +1,627 @@
-# BathyCat Seabed Imager 🌊📷
+# BathyCat Seabed Imager
 
-A complete underwater imaging system for the Raspberry Pi 4, designed to capture high-frequency seabed images with GPS tagging and precise time synchronization.
+An autonomous seabed imaging system for surface vessels, capturing geotagged images and storing them on USB drives.
 
-> **🎉 System Status**: **FULLY OPERATIONAL!** All issues resolved and system tested at 4-5 images/second capture rate. See [SYSTEM_CORRECTIONS.md](SYSTEM_CORRECTIONS.md) for complete fix details.
+## Project Overview
 
-## System Overview
-
-This system captures seabed images using a USB camera, tags them with GPS coordinates and precise timestamps, and stores them on local USB storage for later retrieval.
-
-### Hardware Components
-
-- **Raspberry Pi 4 Model B (4GB)** - Main processing unit
-- **StellarHD USB Camera (H.264)** - Underwater imaging (1080p@30fps capable)
-- **512GB USB 3.0 Flash Drive** - High-speed local storage (exFAT/NTFS/ext4 supported)
-- **Adafruit Mini GPS PA1010D - USB Version** - GPS positioning and time sync
-- **Waterproof housing** - Protection for Pi and connections
+The BathyCat Seabed Imager is designed to run on autonomous surface vessels (ASVs) to capture continuous imagery of the seabed. The system uses a downward-facing camera, integrates GPS coordinates into image metadata, and stores everything on external USB storage for later analysis.
 
 ### Key Features
 
-- **✅ High-frequency capture**: 4+ images per second with fswebcam fallback
-- **✅ GPS tagging**: Each image tagged with precise location
-- **✅ Time synchronization**: GPS-based time sync for data correlation
-- **✅ Efficient storage**: Organized file structure with metadata
-- **✅ Robust logging**: Comprehensive system and error logging with emojis
-- **✅ Auto-start capability**: Runs automatically on boot via systemd
-- **✅ Error recovery**: Individual component error handling prevents system crashes
-- **✅ Multi-filesystem USB**: Supports exFAT, VFAT, ext4, NTFS storage devices
-- **✅ Integrated USB mounting**: Automatic USB detection and mounting within the application
-- **✅ Comprehensive testing**: Full system verification with automated tests
+- **Autonomous Operation**: Runs as a systemd service with automatic startup
+- **GPS Geotagging**: Embeds precise GPS coordinates into EXIF metadata
+- **USB Storage**: Organized file storage with automatic cleanup
+- **LED Status Indicators**: Visual feedback for system status
+- **Robust Error Handling**: Graceful degradation and automatic recovery
+- **Wireless Compatible**: SSH access for remote monitoring
+- **Indoor Testing**: Mock GPS mode for development and testing
+
+### Hardware Requirements
+
+- **Raspberry Pi 4 Model B** (4GB RAM recommended)
+- **DWE StellarHD USB Camera** (1080p@30fps capable)
+- **Adafruit Ultimate GPS - USB Version**
+- **SanDisk 512GB USB 3.0 Flash Drive** (or similar)
+- **MicroSD Card** (32GB+ for OS and logs)
+- **Status LEDs** (optional, for visual feedback)
 
 ## Quick Start
 
-### 🚀 New Installation (Recommended)
+### 1. Initial Setup
+
 ```bash
-# 1. Clone repository
+# Clone the repository
 git clone https://github.com/Mike-Bollinger/BathyCat-Seabed-Imager.git
 cd BathyCat-Seabed-Imager
 
-# 2. Run complete installation
-sudo ./scripts/install_complete.sh
+# Run the installation script
+sudo ./scripts/install.sh
 
-# 3. Reboot system  
-sudo reboot
-
-# 4. Setup USB storage (after connecting hardware)
-sudo /opt/bathycat/setup_usb_storage.sh
-
-# 5. Start service
-sudo systemctl start bathycat-imager
+# The installer will:
+# - Update the system
+# - Install required packages
+# - Set up Python environment
+# - Configure the service
+# - Set up USB auto-mounting
+# - Configure log rotation
 ```
 
-### 🔍 Verification
+### 2. Configuration
+
 ```bash
-# Test all components
-python3 tests/test_system.py
+# Create default configuration
+cd /opt/bathycat/src && sudo python3 -m config --create-default
 
-# Check system status
-/opt/bathycat/status.sh
+# Edit configuration if needed
+sudo nano /etc/bathycat/config.json
 
-# View live logs
-journalctl -u bathycat-imager -f
+# Validate configuration
+cd /opt/bathycat/src && sudo python3 -m config --validate
 ```
+
+### 3. Service Management
+
+```bash
+# Start the service
+sudo systemctl start bathyimager
+
+# Check status
+sudo systemctl status bathyimager
+
+# View logs
+sudo journalctl -u bathyimager -f
+
+# Enable auto-start on boot
+sudo systemctl enable bathyimager
+```
+
+## System Architecture
+
+### Core Components
+
+1. **Camera Module** (`src/camera.py`)
+   - OpenCV-based USB camera interface
+   - Configurable resolution, FPS, and image quality
+   - Health monitoring and error recovery
+
+2. **GPS Module** (`src/gps.py`)
+   - NMEA sentence parsing using pynmea2
+   - Serial communication with GPS device
+   - Mock GPS support for testing
+
+3. **Image Processor** (`src/image_processor.py`)
+   - EXIF GPS metadata embedding
+   - JPEG optimization and compression
+   - Coordinate format conversion
+
+4. **Storage Manager** (`src/storage.py`)
+   - Hierarchical directory organization (YYYY/MM/DD)
+   - Automatic file cleanup based on age/space
+   - USB device monitoring
+
+5. **LED Status System** (`src/led_status.py`)
+   - GPIO-based LED control
+   - Status indication (OK, Error, Activity)
+   - Configurable blink patterns
+
+6. **Main Service** (`src/main.py`)
+   - Coordinates all subsystems
+   - Threaded execution for concurrent operations
+   - Signal handling for graceful shutdown
+
+### Configuration System
+
+The enhanced configuration system (`src/config.py`) provides:
+
+- **Environment Detection**: Automatically detects hardware and adjusts settings
+- **Validation**: Comprehensive configuration validation with detailed error messages
+- **Environment Profiles**: Different settings for development/testing/production
+- **Hot Reloading**: Runtime configuration updates without service restart
+
+### File Organization
+
+```
+/opt/bathycat/              # Installation directory
+├── src/                    # Source code
+├── scripts/                # Installation and maintenance scripts
+├── venv/                   # Python virtual environment
+├── VERSION                 # Version information
+└── backups/               # Update backups
+
+/etc/bathycat/             # Configuration directory
+└── config.json            # Main configuration file
+
+/var/log/bathycat/         # Log directory
+├── bathycat.log           # Application logs
+└── system.log             # System-level logs
+
+/media/usb/                # Default USB storage
+└── YYYY/MM/DD/            # Date-based organization
+    └── bathycat_*.jpg     # Geotagged images
+```
+
+## Configuration Reference
+
+### Camera Settings
+
+```json
+{
+  "camera": {
+    "device_index": 0,          # USB camera device (/dev/video0)
+    "width": 1920,              # Image width in pixels
+    "height": 1080,             # Image height in pixels
+    "fps": 30,                  # Frames per second
+    "format": "MJPG",           # Video format (MJPG recommended)
+    "jpeg_quality": 95,         # JPEG compression quality (1-100)
+    "capture_timeout": 5.0,     # Timeout for frame capture
+    "retry_count": 3,           # Retry attempts on failure
+    "auto_focus": false,        # Enable auto-focus (if supported)
+    "exposure": -1,             # Manual exposure (-1 = auto)
+    "brightness": 128,          # Brightness adjustment
+    "contrast": 32,             # Contrast adjustment
+    "saturation": 32            # Saturation adjustment
+  }
+}
+```
+
+### GPS Settings
+
+```json
+{
+  "gps": {
+    "port": "/dev/ttyUSB0",     # GPS device port
+    "baudrate": 9600,           # Serial communication speed
+    "timeout": 2.0,             # Read timeout in seconds
+    "fix_timeout": 30.0,        # Time to wait for GPS fix
+    "min_satellites": 4,        # Minimum satellites for valid fix
+    "min_accuracy": 10.0,       # Minimum accuracy in meters
+    "mock_enabled": false,      # Enable mock GPS for testing
+    "mock_latitude": 40.7128,   # Mock GPS latitude
+    "mock_longitude": -74.0060  # Mock GPS longitude
+  }
+}
+```
+
+### Storage Settings
+
+```json
+{
+  "storage": {
+    "base_path": "/media/usb",              # USB mount point
+    "max_images_per_day": 10000,            # Daily image limit
+    "cleanup_days": 30,                     # Delete files older than N days
+    "min_free_space_mb": 1000,              # Minimum free space (MB)
+    "directory_structure": "%Y/%m/%d",      # Date-based folders
+    "filename_format": "bathycat_%Y%m%d_%H%M%S_{counter:04d}.jpg"
+  }
+}
+```
+
+### LED Indicators
+
+```json
+{
+  "leds": {
+    "status_pin": 18,           # Status LED GPIO pin (BCM)
+    "error_pin": 19,            # Error LED GPIO pin (BCM)  
+    "activity_pin": 20,         # Activity LED GPIO pin (BCM)
+    "enabled": true,            # Enable LED indicators
+    "blink_rate": 0.5,          # Blink interval in seconds
+    "brightness": 0.8,          # LED brightness (0.0-1.0)
+    "startup_test": true        # Test LEDs at startup
+  }
+}
+```
+
+### System Settings
+
+```json
+{
+  "system": {
+    "environment": "production",        # Environment: development/testing/production
+    "capture_interval": 1.0,            # Seconds between image captures
+    "max_capture_errors": 10,           # Max consecutive errors before restart
+    "restart_on_error": true,           # Auto-restart on critical errors
+    "health_check_interval": 60.0,      # Health check frequency (seconds)
+    "watchdog_timeout": 300.0,          # Service watchdog timeout
+    "graceful_shutdown_timeout": 30.0,  # Shutdown timeout
+    "performance_monitoring": false     # Enable performance metrics
+  }
+}
+```
+
+## Operation Guide
+
+### Normal Operation
+
+1. **System Startup**
+   - Service starts automatically on boot
+   - LED test sequence (if enabled)
+   - Hardware initialization and health checks
+   - GPS fix acquisition
+   - Image capture begins when GPS lock obtained
+
+2. **Image Capture Process**
+   - Continuous capture at configured interval
+   - GPS coordinates embedded in EXIF metadata
+   - Images saved with timestamp-based naming
+   - Status indicated via LEDs and logs
+
+3. **Storage Management**
+   - Automatic directory creation by date
+   - File cleanup when storage limits reached
+   - USB device monitoring and remounting
+
+### LED Status Indicators
+
+| LED | Pattern | Meaning |
+|-----|---------|---------|
+| Status (Green) | Solid | System running normally |
+| Status (Green) | Slow blink | Starting up / GPS acquiring |
+| Error (Red) | Off | No errors |
+| Error (Red) | Solid | Critical error |
+| Error (Red) | Fast blink | Warning condition |
+| Activity (Blue) | Blink | Image captured |
+
+### Log Monitoring
+
+```bash
+# View real-time logs
+sudo journalctl -u bathycat -f
+
+# View recent logs
+sudo journalctl -u bathycat --since "1 hour ago"
+
+# View log files directly
+sudo tail -f /var/log/bathycat/bathycat.log
+
+# Check system logs
+sudo tail -f /var/log/syslog | grep bathycat
+```
+
+### Performance Monitoring
+
+```bash
+# Check service status
+sudo systemctl status bathyimager
+
+# Monitor resource usage
+sudo htop
+
+# Check disk usage
+df -h /media/usb
+
+# View storage statistics
+du -sh /media/usb/*
+```
+
+## Development Guide
+
+### Setting Up Development Environment
+
+```bash
+# Clone repository
+git clone https://github.com/Mike-Bollinger/BathyCat-Seabed-Imager.git
+cd BathyCat-Seabed-Imager
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Install development dependencies
+pip install pytest pytest-cov black flake8 mypy
+
+# Set development environment
+export BATHYCAT_ENV=development
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+python -m pytest tests/
+
+# Run with coverage
+python -m pytest tests/ --cov=src/bathycat --cov-report=html
+
+# Run specific test file
+python -m pytest tests/test_camera.py
+
+# Run integration tests
+python -m pytest tests/integration/
+```
+
+### Code Quality
+
+```bash
+# Format code
+black src/ tests/
+
+# Check style
+flake8 src/ tests/
+
+# Type checking
+mypy src/bathycat/
+
+# Run all quality checks
+./scripts/check-quality.sh
+```
+
+### Mock Testing
+
+For development on non-Raspberry Pi systems:
+
+```json
+{
+  "system": {
+    "environment": "development"
+  },
+  "gps": {
+    "mock_enabled": true,
+    "mock_latitude": 40.7128,
+    "mock_longitude": -74.0060
+  },
+  "leds": {
+    "enabled": false
+  }
+}
+```
+
+### Adding New Features
+
+1. **Create Feature Branch**
+   ```bash
+   git checkout -b feature/new-feature
+   ```
+
+2. **Implement Changes**
+   - Follow existing code patterns
+   - Add comprehensive error handling
+   - Include logging for debugging
+   - Write unit tests
+
+3. **Test Thoroughly**
+   - Unit tests for new functionality
+   - Integration tests with hardware
+   - Mock testing for non-Pi environments
+
+4. **Submit Pull Request**
+   - Include test results
+   - Document new configuration options
+   - Update README if needed
 
 ## Troubleshooting
 
-### 🚨 Common Issues and Solutions
+### Common Issues
 
-If you encounter issues during installation or operation, here are the most common problems and their solutions:
+#### Camera Not Detected
 
-#### **Issue 1: Service Fails to Start - OpenCV Import Error**
-**Symptoms**: `ImportError: libGL.so.1: cannot open shared object file`
 ```bash
-# Solution: Install OpenGL libraries
-sudo apt update
-sudo apt install -y libgl1 libglib2.0-0 libsm6 libxext6 libxrender-dev
+# Check USB cameras
+lsusb | grep -i camera
+
+# Check video devices
+ls -la /dev/video*
+
+# Test camera manually
+ffplay /dev/video0
+
+# Check permissions
+sudo usermod -a -G video pi
 ```
 
-#### **Issue 2: Missing Python Dependencies**
-**Symptoms**: `ModuleNotFoundError: No module named 'piexif'` or `'psutil'`
+#### GPS Not Working
+
 ```bash
-# Solution: Install missing packages in virtual environment
-source /home/bathyimager/bathycat-venv/bin/activate
-pip install piexif psutil aiofiles
-# Or install all requirements
-pip install -r ~/BathyCat-Seabed-Imager/requirements.txt
+# Check USB GPS device
+lsusb | grep -i gps
+
+# Check serial devices
+ls -la /dev/ttyUSB* /dev/ttyACM*
+
+# Test GPS manually
+sudo cat /dev/ttyUSB0
+
+# Check permissions
+sudo usermod -a -G dialout pi
 ```
 
-#### **Issue 3: USB Storage Permission Denied**
-**Symptoms**: `PermissionError: [Errno 13] Permission denied: '/media/usb-storage/bathycat'`
+#### Storage Issues
+
 ```bash
-# NEW: The system now uses integrated USB management
-# USB mounting is handled automatically by the application
-# Check service logs for USB mounting status:
-journalctl -u bathycat-imager | grep -i usb
-
-# Legacy solution (if needed):
-sudo umount /media/usb-storage
-sudo mount -o uid=bathyimager,gid=bathyimager,umask=0022 /dev/sda1 /media/usb-storage
-```
-
-#### **Issue 4: USB Drive Not Detected**
-**Symptoms**: No USB storage visible or "BathyCat USB drive not found"
-```bash
-# NEW: Check integrated USB detection logs
-journalctl -u bathycat-imager | grep -E "(USB|FCDF-E63E|BATHYCAT)"
-
-# Verify USB drive has correct label and UUID
-lsblk -f | grep -E "BATHYCAT|FCDF-E63E"
-
-# Check connected drives
+# Check USB storage
 lsblk
-lsusb | grep -i storage
 
-# Manual mount if auto-mount fails (legacy)
-sudo mkdir -p /media/usb-storage
-sudo mount /dev/sda1 /media/usb-storage
+# Check mount status
+mount | grep usb
+
+# Manual mount
+sudo mkdir -p /media/usb
+sudo mount /dev/sda1 /media/usb
+
+# Check disk space
+df -h /media/usb
 ```
 
-#### **Issue 5: GPS No Fix (Indoor Testing)**
-**Symptoms**: GPS data shows `null` values
-```bash
-# This is normal indoors - GPS needs satellite signals
-# For outdoor testing, check GPS status:
-journalctl -u bathycat-imager | grep gps
-
-# GPS typically takes 30-60 seconds to get first fix outdoors
-```
-
-### 📋 **Complete Troubleshooting Checklist**
-
-If the service won't start, work through these steps:
-
-1. **Check service status**:
-   ```bash
-   sudo systemctl status bathycat-imager
-   journalctl -u bathycat-imager -n 20
-   ```
-
-2. **Verify dependencies**:
-   ```bash
-   # System dependencies
-   dpkg -l | grep -E "libgl1|libglib2.0-0|libsm6"
-   
-   # Python dependencies
-   source /home/bathyimager/bathycat-venv/bin/activate
-   python3 -c "import cv2, piexif, psutil, aiofiles; print('All imports OK')"
-   ```
-
-3. **Check USB storage**:
-   ```bash
-   df -h | grep usb-storage
-   ls -la /media/usb-storage/bathycat/
-   touch /media/usb-storage/bathycat/test_write  # Test write permissions
-   ```
-
-4. **Manual test run**:
-   ```bash
-   cd /opt/bathycat
-   source /home/bathyimager/bathycat-venv/bin/activate
-   python3 bathycat_imager.py --config /etc/bathycat/bathycat_config.json --verbose
-   ```
-
-### ✅ **Expected Working Status**
-
-When everything is working correctly, you should see:
+#### Service Not Starting
 
 ```bash
-$ sudo systemctl status bathycat-imager
-● bathycat-imager.service - BathyCat Seabed Imager
-     Active: active (running)
-     
-$ journalctl -u bathycat-imager -n 5
-# Should show image capture logs like:
-# "Camera configured: 1920x1080 @ 5.0fps"
-# "Image OK, shape: (1080, 1920, 3)"
-# "GPS data type: <class 'dict'>"
-# "Image processing complete"
+# Check service status
+sudo systemctl status bathyimager
 
-$ ls /media/usb-storage/bathycat/images/$(date +%Y%m%d_%H)/ | wc -l
-# Should show growing number of .jpg files
+# View detailed logs
+sudo journalctl -u bathyimager -n 50
+
+# Check configuration
+cd /opt/bathycat/src && sudo python3 -m config --validate
+
+# Test manually
+cd /opt/bathycat/src
+sudo -u pi ../venv/bin/python -m main
 ```
 
-**Performance Indicators**:
-- **Capture Rate**: ~4-5 images per second
-- **Image Size**: 35-40KB per 1920x1080 JPEG
-- **File Organization**: Date/time folders (YYYYMMDD_HH)
-- **Metadata**: JSON files with timestamps and GPS data structure
+### Error Codes
 
-## Updates
+| Code | Description | Solution |
+|------|-------------|----------|
+| E001 | Camera initialization failed | Check camera connection and permissions |
+| E002 | GPS timeout | Check GPS device and antenna |
+| E003 | Storage unavailable | Check USB drive connection |
+| E004 | Configuration invalid | Fix configuration file |
+| E005 | Insufficient disk space | Clean storage or add capacity |
 
-### 🔄 Updating Existing Installation
+### Recovery Procedures
 
-To update the BathyCat system on your Raspberry Pi:
+#### Service Recovery
 
 ```bash
-./update --force
+# Restart service
+sudo systemctl restart bathyimager
+
+# Reset configuration
+cd /opt/bathycat/src && sudo python3 -m config --create-default
+
+# Factory reset
+sudo ./scripts/install.sh --reset
 ```
 
-This will:
-- ✅ Check for new updates from GitHub (fixed bash syntax)
-- ✅ Backup your configuration  
-- ✅ Pull the latest code
-- ✅ Update dependencies
-- ✅ Restart services automatically
-- ✅ Test the update
-
-### 🆕 Fresh Installation (Recommended for v2.0+)
-
-If you're upgrading from an older version or want a clean install:
+#### Hardware Reset
 
 ```bash
-# Complete system installation with all fixes
-sudo ./scripts/install_complete.sh
+# Reset USB devices
+sudo lsusb | grep -E "(camera|gps)" | cut -d' ' -f6 | \
+while read device; do
+    echo "Resetting $device"
+    sudo usb_modeswitch -v ${device%:*} -p ${device#*:} --reset-usb
+done
 ```
 
-This provides:
-- ✅ All system corrections applied
-- ✅ Proper error handling and logging
-- ✅ Robust USB storage detection
-- ✅ Service integration fixes
-- ✅ Comprehensive system testing
+## Maintenance
 
-### Development Updates (Windows)
-
-When developing on Windows, use:
-
-```powershell
-# PowerShell
-.\update.ps1
-
-# Or Command Prompt
-update.bat
-```
-
-Then push changes to make them available on the Pi:
+### Regular Maintenance Tasks
 
 ```bash
-git add .
-git commit -m "Your update message"
-git push origin main
+# Check system health (weekly)
+sudo ./scripts/health-check.sh
+
+# Update system (monthly)
+sudo ./scripts/bathycat-update --check
+sudo ./scripts/bathycat-update
+
+# Clean old logs (monthly)
+sudo journalctl --vacuum-time=30d
+
+# Check storage usage (weekly)
+du -sh /media/usb/*
 ```
 
-## Project Structure
+### Update System
 
-```
-BathyCat-Seabed-Imager/
-├── src/
-│   ├── bathycat_imager.py     # Main application
-│   ├── camera_controller.py   # Camera interface
-│   ├── gps_controller.py      # GPS handling
-│   ├── image_processor.py     # Image processing and tagging
-│   ├── storage_manager.py     # File management
-│   └── config.py             # Configuration settings
-├── scripts/
-│   ├── install.sh            # Installation script
-│   ├── setup_services.sh     # Service configuration
-│   ├── setup_usb_storage.sh  # USB storage setup
-│   └── start_capture.sh      # Startup script
-├── tests/
-│   ├── test_components.py    # System tests
-│   └── test_camera_capture.py # Camera testing with USB storage
-├── config/
-│   ├── bathycat_config.json  # Main configuration
-│   └── logging.conf          # Logging configuration
-├── docs/
-│   ├── INSTALLATION.md       # Detailed setup guide
-│   ├── HARDWARE_SETUP.md     # Hardware configuration
-│   ├── TROUBLESHOOTING.md    # Common issues and solutions
-│   └── API.md               # Code documentation
-├── update                    # Quick update script (Linux/Pi)
-├── update.ps1               # Update script (Windows PowerShell)
-├── update.bat               # Update script (Windows Batch)
-└── README.md                # This file
+```bash
+# Check for updates
+sudo ./scripts/bathycat-update --check
+
+# Perform update
+sudo ./scripts/bathycat-update
+
+# Force update
+sudo ./scripts/bathycat-update --force
+
+# Show version information
+sudo ./scripts/bathycat-update --version
 ```
 
-## Documentation
+### Backup and Recovery
 
-- **[Installation Guide](docs/INSTALLATION.md)** - Complete setup instructions
-- **[Hardware Setup](docs/HARDWARE_SETUP.md)** - Physical configuration
-- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
-- **[API Documentation](docs/API.md)** - Code reference
+```bash
+# Backup configuration
+sudo cp /etc/bathycat/config.json ~/config.json.backup
 
-## System Requirements
+# Backup images (to external drive)
+rsync -av /media/usb/ /external/backup/
 
-- Raspberry Pi 4 Model B (4GB recommended)
-- Raspberry Pi OS Lite (64-bit) - Bullseye or later
-- 32GB+ microSD card (for OS)
-- 512GB USB 3.0 Flash Drive (for image storage)
-- USB 3.0 camera (StellarHD or compatible)
-- USB GPS module with antenna
+# System backup (if needed)
+sudo dd if=/dev/mmcblk0 of=/external/system-backup.img bs=4M
+```
 
-## Disclaimer
+## API Reference
 
-This repository is a scientific product and is not official communication of the National Oceanic and Atmospheric Administration, or the United States Department of Commerce. All NOAA GitHub project code is provided on an 'as is' basis and the user assumes responsibility for its use. Any claims against the Department of Commerce or Department of Commerce bureaus stemming from the use of this GitHub project will be governed by all applicable Federal law. Any reference to specific commercial products, processes, or services by service mark, trademark, manufacturer, or otherwise, does not constitute or imply their endorsement, recommendation or favoring by the Department of Commerce. The Department of Commerce seal and logo, or the seal and logo of a DOC bureau, shall not be used in any manner to imply endorsement of any commercial product or activity by DOC or the United States Government.
+### Main Components
+
+#### BathyCatService
+
+```python
+from main import BathyCatService
+
+service = BathyCatService(config_path='/etc/bathycat/config.json')
+service.start()  # Start all subsystems
+service.stop()   # Graceful shutdown
+```
+
+#### Camera
+
+```python
+from camera import Camera
+
+camera = Camera(config)
+camera.initialize()
+frame = camera.capture_frame()
+camera.close()
+```
+
+#### GPS
+
+```python
+from gps import GPS
+
+gps = GPS(config)
+gps.connect()
+fix = gps.wait_for_fix(timeout=30)
+gps.disconnect()
+```
+
+#### Configuration
+
+```python
+from config import ConfigManager
+
+manager = ConfigManager('/etc/bathycat/config.json')
+config = manager.load_config()
+manager.save_config(config)
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests and documentation
+5. Submit a pull request
+
+### Development Standards
+
+- Python 3.7+ compatibility
+- Type hints for all functions
+- Comprehensive error handling
+- Unit tests with >90% coverage
+- Clear documentation and comments
+- Follow PEP 8 style guidelines
 
 ## License
 
-Software code created by U.S. Government employees is not subject to copyright in the United States (17 U.S.C. §105). The United States/Department of Commerce reserve all rights to seek and obtain copyright protection in countries other than the United States for Software authored in its entirety by the Department of Commerce. To this end, the Department of Commerce hereby grants to Recipient a royalty-free, nonexclusive license to use, copy, and create derivative works of the Software outside of the United States.
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Support
+
+- **Issues**: GitHub Issues
+- **Documentation**: This README and inline code documentation
+- **Discussions**: GitHub Discussions
+
+## Acknowledgments
+
+- Raspberry Pi Foundation for the excellent hardware platform
+- OpenCV community for computer vision libraries
+- Python GPS community for NMEA parsing tools

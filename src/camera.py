@@ -1,0 +1,321 @@
+#!/usr/bin/env python3
+"""
+Camera Module for BathyCat Seabed Imager
+========================================
+
+Handles USB camera interfacing using OpenCV with proper error handling,
+configuration management, and frame capture optimization.
+
+Features:
+- USB camera detection and initialization
+- Configurable resolution, format, and camera settings
+- Frame capture with error handling
+- Camera health monitoring
+- Auto-exposure and white balance control
+"""
+
+import cv2
+import logging
+import time
+from typing import Optional, Tuple, Dict, Any
+import numpy as np
+
+
+class CameraError(Exception):
+    """Custom exception for camera-related errors."""
+    pass
+
+
+class Camera:
+    """
+    USB Camera interface for BathyCat system.
+    
+    Provides reliable camera access with configuration management and error handling.
+    """
+    
+    def __init__(self, config: Dict[str, Any]):
+        """
+        Initialize camera with configuration.
+        
+        Args:
+            config: Camera configuration dictionary
+        """
+        self.config = config
+        self.logger = logging.getLogger(__name__)
+        self.cap: Optional[cv2.VideoCapture] = None
+        self.is_initialized = False
+        self.last_frame_time = 0
+        self.frame_count = 0
+        
+        # Camera settings from config
+        self.device_id = config.get('camera_device_id', 0)
+        self.width = config.get('camera_width', 1920)
+        self.height = config.get('camera_height', 1080)
+        self.fps = config.get('camera_fps', 30)
+        self.format = config.get('camera_format', 'MJPG')
+        self.auto_exposure = config.get('camera_auto_exposure', True)
+        self.auto_white_balance = config.get('camera_auto_white_balance', True)
+        self.contrast = config.get('camera_contrast', 50)
+        self.saturation = config.get('camera_saturation', 60)
+        self.exposure = config.get('camera_exposure', -6)
+        self.white_balance = config.get('camera_white_balance', 4000)
+        
+    def initialize(self) -> bool:
+        """
+        Initialize camera connection and configure settings.
+        
+        Returns:
+            bool: True if initialization successful, False otherwise
+        """
+        try:
+            self.logger.info(f"Initializing camera {self.device_id}")
+            
+            # Try to initialize camera
+            self.cap = cv2.VideoCapture(self.device_id)
+            
+            if not self.cap.isOpened():
+                raise CameraError(f"Failed to open camera device {self.device_id}")
+            
+            # Configure camera settings
+            self._configure_camera()
+            
+            # Test capture a frame to verify functionality
+            ret, frame = self.cap.read()
+            if not ret or frame is None:
+                raise CameraError("Failed to capture test frame")
+            
+            self.is_initialized = True
+            self.logger.info("Camera initialized successfully")
+            self.logger.info(f"Camera resolution: {self.width}x{self.height}")
+            self.logger.info(f"Camera FPS: {self.fps}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Camera initialization failed: {e}")
+            self._cleanup()
+            return False
+    
+    def _configure_camera(self) -> None:
+        """Configure camera properties based on config."""
+        if not self.cap:
+            raise CameraError("Camera not initialized")
+        
+        # Set video format
+        if self.format == 'MJPG':
+            fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+            self.cap.set(cv2.CAP_PROP_FOURCC, fourcc)
+        
+        # Set resolution
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        
+        # Set FPS
+        self.cap.set(cv2.CAP_PROP_FPS, self.fps)
+        
+        # Configure exposure
+        if self.auto_exposure:
+            self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)  # Enable auto exposure
+        else:
+            self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # Manual exposure
+            self.cap.set(cv2.CAP_PROP_EXPOSURE, self.exposure)
+        
+        # Configure white balance
+        if not self.auto_white_balance:
+            self.cap.set(cv2.CAP_PROP_AUTO_WB, 0)  # Disable auto white balance
+            self.cap.set(cv2.CAP_PROP_WB_TEMPERATURE, self.white_balance)
+        else:
+            self.cap.set(cv2.CAP_PROP_AUTO_WB, 1)  # Enable auto white balance
+        
+        # Set other properties if supported
+        try:
+            self.cap.set(cv2.CAP_PROP_CONTRAST, self.contrast)
+            self.cap.set(cv2.CAP_PROP_SATURATION, self.saturation)
+        except Exception as e:
+            self.logger.debug(f"Could not set contrast/saturation: {e}")
+        
+        # Log actual settings after configuration
+        self._log_camera_properties()
+    
+    def _log_camera_properties(self) -> None:
+        """Log actual camera properties for debugging."""
+        if not self.cap:
+            return
+        
+        try:
+            actual_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            actual_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            actual_fps = int(self.cap.get(cv2.CAP_PROP_FPS))
+            
+            self.logger.debug(f"Actual camera properties:")
+            self.logger.debug(f"  Resolution: {actual_width}x{actual_height}")
+            self.logger.debug(f"  FPS: {actual_fps}")
+            
+        except Exception as e:
+            self.logger.debug(f"Could not read camera properties: {e}")
+    
+    def capture_frame(self) -> Optional[np.ndarray]:
+        """
+        Capture a single frame from camera.
+        
+        Returns:
+            np.ndarray: Captured frame, or None if capture failed
+        """
+        if not self.is_initialized or not self.cap:
+            self.logger.error("Camera not initialized")
+            return None
+        
+        try:
+            ret, frame = self.cap.read()
+            
+            if not ret or frame is None:
+                self.logger.error("Failed to capture frame")
+                return None
+            
+            # Update statistics
+            self.frame_count += 1
+            self.last_frame_time = time.time()
+            
+            self.logger.debug(f"Captured frame {self.frame_count}, size: {frame.shape}")
+            return frame
+            
+        except Exception as e:
+            self.logger.error(f"Error capturing frame: {e}")
+            return None
+    
+    def get_camera_info(self) -> Dict[str, Any]:
+        """
+        Get camera information and status.
+        
+        Returns:
+            dict: Camera information dictionary
+        """
+        info = {
+            'device_id': self.device_id,
+            'initialized': self.is_initialized,
+            'frame_count': self.frame_count,
+            'last_frame_time': self.last_frame_time,
+            'configured_resolution': f"{self.width}x{self.height}",
+            'configured_fps': self.fps,
+            'format': self.format
+        }
+        
+        if self.cap and self.is_initialized:
+            try:
+                info.update({
+                    'actual_width': int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                    'actual_height': int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                    'actual_fps': int(self.cap.get(cv2.CAP_PROP_FPS)),
+                    'backend': self.cap.getBackendName()
+                })
+            except Exception as e:
+                self.logger.debug(f"Could not get detailed camera info: {e}")
+        
+        return info
+    
+    def is_healthy(self) -> bool:
+        """
+        Check camera health status.
+        
+        Returns:
+            bool: True if camera is healthy, False otherwise
+        """
+        if not self.is_initialized or not self.cap:
+            return False
+        
+        # Check if we can capture a frame
+        try:
+            ret, _ = self.cap.read()
+            return ret
+        except Exception:
+            return False
+    
+    def reconnect(self) -> bool:
+        """
+        Attempt to reconnect camera.
+        
+        Returns:
+            bool: True if reconnection successful, False otherwise
+        """
+        self.logger.info("Attempting camera reconnection")
+        self._cleanup()
+        return self.initialize()
+    
+    def _cleanup(self) -> None:
+        """Clean up camera resources."""
+        if self.cap:
+            self.cap.release()
+            self.cap = None
+        self.is_initialized = False
+    
+    def close(self) -> None:
+        """Close camera connection and clean up resources."""
+        self.logger.info("Closing camera")
+        self._cleanup()
+
+
+def test_camera(config: Dict[str, Any]) -> bool:
+    """
+    Test camera functionality with given configuration.
+    
+    Args:
+        config: Camera configuration dictionary
+        
+    Returns:
+        bool: True if camera test passed, False otherwise
+    """
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    
+    try:
+        camera = Camera(config)
+        
+        if not camera.initialize():
+            logger.error("Camera initialization failed")
+            return False
+        
+        # Capture a few test frames
+        for i in range(3):
+            frame = camera.capture_frame()
+            if frame is None:
+                logger.error(f"Failed to capture test frame {i+1}")
+                return False
+            
+            logger.info(f"Test frame {i+1}: {frame.shape}")
+            time.sleep(0.5)
+        
+        # Print camera info
+        info = camera.get_camera_info()
+        logger.info(f"Camera info: {info}")
+        
+        # Test health check
+        health = camera.is_healthy()
+        logger.info(f"Camera health: {health}")
+        
+        camera.close()
+        logger.info("Camera test completed successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Camera test failed: {e}")
+        return False
+
+
+if __name__ == "__main__":
+    # Test configuration
+    test_config = {
+        'camera_device_id': 0,
+        'camera_width': 1920,
+        'camera_height': 1080,
+        'camera_fps': 30,
+        'camera_format': 'MJPG',
+        'camera_auto_exposure': True,
+        'camera_auto_white_balance': True,
+        'camera_contrast': 50,
+        'camera_saturation': 60,
+        'camera_exposure': -6,
+        'camera_white_balance': 4000
+    }
+    
+    success = test_camera(test_config)
+    exit(0 if success else 1)
