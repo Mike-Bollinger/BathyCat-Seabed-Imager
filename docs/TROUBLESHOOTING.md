@@ -587,6 +587,7 @@ journalctl -u bathycat-imager --no-pager -n 20
 - Cannot connect via SSH
 - Connection timeouts
 - Authentication failures
+- Pi appears in network scan but ping fails
 
 **Solutions:**
 
@@ -610,6 +611,103 @@ journalctl -u bathycat-imager --no-pager -n 20
    
    # Check SSH configuration
    sudo nano /etc/ssh/sshd_config
+   ```
+
+3. **Direct Ethernet Connection (Recommended for Troubleshooting)**
+
+   When Wi-Fi or network router issues prevent SSH access, establish a direct connection between your computer and the Raspberry Pi.
+
+   **Prerequisites:**
+   - Ethernet cable
+   - SD card accessible on another computer
+   - Pi appears in network scan but doesn't respond to ping
+
+   **Step 1: Configure Pi Network Settings**
+
+   Remove the SD card from the Pi and insert it into your computer. You should see a boot partition.
+
+   ```bash
+   # Edit cmdline.txt in the boot partition
+   # Add this to the END of the existing single line (with a space before it):
+   ip=192.168.1.200::192.168.1.1:255.255.255.0::eth0:off
+   
+   # The complete line should look like:
+   # console=serial0,115200 ... rootwait ip=192.168.1.200::192.168.1.1:255.255.255.0::eth0:off
+   ```
+
+   **Step 2: Enable SSH on Pi**
+
+   ```bash
+   # In the boot partition, create an empty file named 'ssh' (no extension)
+   # This enables SSH on first boot
+   touch ssh
+   ```
+
+   **Step 3: Configure Computer Network**
+
+   Set your computer's Ethernet adapter to use a static IP:
+
+   **Windows:**
+   - Go to Settings → Network & Internet → Ethernet
+   - Click on your Ethernet adapter
+   - Click "Edit" next to "IP assignment"
+   - Change to "Manual" and enable IPv4:
+     - IP address: `192.168.1.1`
+     - Subnet mask: `255.255.255.0`
+     - Leave Gateway blank
+   - Click Save
+
+   **Linux/macOS:**
+   ```bash
+   # Configure static IP (adjust interface name)
+   sudo ip addr add 192.168.1.1/24 dev eth0
+   sudo ip link set eth0 up
+   ```
+
+   **Step 4: Physical Connection**
+
+   ```bash
+   # Connect Pi directly to computer with Ethernet cable
+   # Insert SD card back into Pi
+   # Power on Pi and wait 2-3 minutes for boot
+   ```
+
+   **Step 5: Test Connection**
+
+   ```bash
+   # Test connectivity
+   ping 192.168.1.200
+   
+   # If ping succeeds, connect via SSH
+   ssh pi@192.168.1.200
+   # Default password: raspberry
+   ```
+
+   **Troubleshooting Direct Connection:**
+
+   - **Pi doesn't respond to ping:**
+     - Check Ethernet cable and connections
+     - Verify Pi's power LED is solid and activity LED blinks
+     - Wait longer for boot (up to 5 minutes)
+     - Try different Ethernet cable or port
+
+   - **Computer shows link-local IP (169.254.x.x):**
+     - Ensure static IP is properly set on computer
+     - Disable DHCP on Ethernet adapter
+     - Restart network adapter
+
+   - **SSH connection refused:**
+     - Verify `ssh` file exists in boot partition (no extension)
+     - Check if SSH service started: `sudo systemctl status ssh`
+     - Try different SSH client (PuTTY, etc.)
+
+   **Reverting Changes:**
+   
+   To restore normal network operation after troubleshooting:
+   ```bash
+   # Remove IP parameter from cmdline.txt
+   # Re-enable DHCP on computer's Ethernet adapter
+   # Configure Pi for Wi-Fi or normal network as needed
    ```
 
 ---
