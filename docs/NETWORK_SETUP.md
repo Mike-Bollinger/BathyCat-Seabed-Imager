@@ -1,40 +1,179 @@
-# BathyCat Network Configuration Guide
+# BathyImager Network Configuration Guide
 
-This guide explains how to configure dual Ethernet + WiFi connectivity for the BathyCat Seabed Imager system running on Raspberry Pi.
+This guide explains how to configure dual Ethernet + WiFi connectivity for the BathyImager Seabed Imager system running on Raspberry Pi.
 
 ## Overview
 
-The BathyCat system supports simultaneous Ethernet and WiFi connections with automatic failover:
+The BathyImager system supports simultaneous Ethernet and WiFi connections with automatic failover:
 
 - **Ethernet (eth0)**: Primary connection with highest priority (metric 100)
 - **WiFi (wlan0)**: Secondary/backup connection with lower priority (metric 300)
 - **Automatic Routing**: Traffic prefers Ethernet when available, falls back to WiFi
 - **Seamless Failover**: Maintains connectivity if one interface fails
 
-## Quick Setup
+## ⚠️ No Internet on Pi? - Internet Sharing Solution
 
-### 1. Run the Network Setup Script
+If your Raspberry Pi can't get online to download packages, use this method to share internet through Ethernet:
 
+### Windows Computer → Pi Internet Sharing
+
+**Step 1: On your Windows computer**
+```cmd
+# Enable Internet Connection Sharing
+# 1. Go to: Control Panel → Network and Internet → Network Connections
+# 2. Right-click your WiFi/Internet adapter → Properties
+# 3. Go to Sharing tab → Check "Allow other network users to connect"
+# 4. Select the Ethernet adapter connected to Pi
+
+# OR use PowerShell to set static IP:
+netsh interface ip set address "Ethernet" static 192.168.137.1 255.255.255.0
+```
+
+**Step 2: On Raspberry Pi**
 ```bash
-# Copy configuration files and setup dual networking
+# Option A: Use the automated script (recommended)
+cd /opt/bathyimager
+sudo chmod +x scripts/setup_shared_internet.sh
+sudo ./scripts/setup_shared_internet.sh
+
+# Option B: Manual setup
+sudo ip addr add 192.168.137.100/24 dev eth0
+sudo ip route add default via 192.168.137.1 dev eth0
+echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+
+# Test connectivity
+ping -c 3 google.com
+
+# If successful, install packages
+sudo apt update
+sudo apt install -y dhcpcd5 wpasupplicant wireless-tools net-tools iproute2 dnsutils
+
+# Enable services  
+sudo systemctl enable dhcpcd
+sudo systemctl enable wpa_supplicant@wlan0
+
+# Now proceed with normal network setup
 sudo ./scripts/network_setup.sh
 ```
 
-### 2. Configure WiFi Credentials
+---
+
+## Quick Setup
+
+### 1. Make Scripts Executable (Required First Step)
+
+```bash
+# Navigate to the BathyImager directory
+cd /opt/bathyimager
+
+# Make all network scripts executable
+sudo chmod +x scripts/network_setup.sh
+sudo chmod +x scripts/wifi_config.sh
+sudo chmod +x scripts/network_status.sh
+sudo chmod +x scripts/network_test.sh
+```
+
+### 2. Configure Network (Offline Method)
+
+Since you need network connectivity to get online, use offline mode to skip package downloads:
+
+```bash
+# Configure network without downloading packages (offline mode)
+sudo ./scripts/network_setup.sh --offline
+
+# This will:
+# - Copy configuration templates to system locations
+# - Skip all package installations
+# - Set up dual network configuration
+# - Leave you ready to connect and install packages later
+
+# OR configure completely manually (see Manual Configuration section below)
+```
+
+### 3. Configure WiFi Credentials
 
 ```bash
 # Interactive WiFi configuration
 sudo ./scripts/wifi_config.sh
 ```
 
-### 3. Check Status
+### 4. Get Online and Install Missing Packages
+
+You have two options to get the required packages:
+
+#### Option A: Share Internet via Ethernet (Recommended)
+
+If your computer has internet, share it through the Ethernet connection:
+
+**On Windows (your computer):**
+```cmd
+# Enable internet connection sharing on your main internet adapter
+# Go to: Network Connections → Right-click your WiFi/Internet adapter → Properties
+# → Sharing tab → Check "Allow other network users to connect"
+# → Select the Ethernet adapter connected to Pi
+
+# Set static IP on Ethernet adapter to Pi:
+netsh interface ip set address "Ethernet" static 192.168.137.1 255.255.255.0
+```
+
+**On Raspberry Pi:**
+```bash
+# Set temporary network config to use your computer as gateway
+sudo ip addr add 192.168.137.100/24 dev eth0
+sudo ip route add default via 192.168.137.1 dev eth0
+echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+
+# Now install packages
+sudo apt update
+sudo apt install -y dhcpcd5 wpasupplicant wireless-tools net-tools iproute2 dnsutils
+
+# Enable services
+sudo systemctl enable dhcpcd
+sudo systemctl enable wpa_supplicant@wlan0
+```
+
+#### Option B: Include Packages in Offline Transfer
+
+Download packages on a computer with internet and transfer them:
+
+**On computer with internet:**
+```bash
+# Create package directory
+mkdir bathyimager-packages
+cd bathyimager-packages
+
+# Download packages (adjust for your Pi's architecture)
+apt download dhcpcd5 wpasupplicant wireless-tools net-tools iproute2 dnsutils
+
+# Transfer to Pi along with your project files
+```
+
+**On Raspberry Pi:**
+```bash
+# Install downloaded packages
+cd /path/to/bathyimager-packages
+sudo dpkg -i *.deb
+
+# Fix any dependency issues
+sudo apt --fix-broken install
+```
+
+### 5. Restart Network Services
+
+```bash
+# Apply network configuration
+sudo systemctl restart dhcpcd
+sudo systemctl restart wpa_supplicant@wlan0
+```
+
+### 6. Check Status
 
 ```bash
 # View current network status
 ./scripts/network_status.sh
 ```
 
-### 4. Test Connectivity
+### 7. Test Connectivity
 
 ```bash
 # Test both interfaces
@@ -42,6 +181,8 @@ sudo ./scripts/wifi_config.sh
 ```
 
 ## Manual Configuration
+
+> **Note**: Use this method when setting up without internet connectivity or when the automated scripts are not available.
 
 ### dhcpcd Configuration
 
@@ -51,7 +192,7 @@ Edit `/etc/dhcpcd.conf`:
 sudo nano /etc/dhcpcd.conf
 ```
 
-Add BathyCat dual network configuration:
+Add BathyImager dual network configuration:
 
 ```conf
 # Ethernet Interface (Primary - Lower metric = higher priority)
@@ -288,7 +429,7 @@ If NetworkManager is running, it may conflict with dhcpcd:
 # Check if NetworkManager is active
 systemctl is-active NetworkManager
 
-# Disable NetworkManager (recommended for BathyCat)
+# Disable NetworkManager (recommended for BathyImager)
 sudo systemctl disable NetworkManager
 sudo systemctl stop NetworkManager
 
@@ -362,7 +503,7 @@ journalctl -u wpa_supplicant@wlan0 -f
 
 ## Integration with BathyCat Service
 
-The BathyCat imaging service automatically works with dual networking:
+The BathyImager imaging service automatically works with dual networking:
 
 1. **Service Start**: Checks network connectivity before starting imaging
 2. **Runtime**: Monitors network health for GPS sync and data transfer
@@ -372,13 +513,13 @@ The BathyCat imaging service automatically works with dual networking:
 ### Service Integration
 
 ```bash
-# Check BathyCat service network status
+# Check BathyImager service network status
 sudo systemctl status bathyimager
 
-# View BathyCat logs with network events
+# View BathyImager logs with network events
 journalctl -u bathyimager | grep -i network
 
-# Test BathyCat with specific interface
+# Test BathyImager with specific interface
 # (modify service config if needed for testing)
 ```
 
@@ -507,7 +648,7 @@ For additional help:
 
 ## Summary
 
-The BathyCat dual networking setup provides:
+The BathyImager dual networking setup provides:
 
 - ✅ **Redundant Connectivity**: Ethernet + WiFi for reliability
 - ✅ **Automatic Priority**: Ethernet preferred, WiFi as backup  
@@ -515,4 +656,4 @@ The BathyCat dual networking setup provides:
 - ✅ **Easy Management**: Scripts for setup, monitoring, and testing
 - ✅ **Flexible Configuration**: Supports DHCP and static IP setups
 
-This configuration ensures the BathyCat system maintains reliable network connectivity for GPS synchronization, data transfer, and remote management even in challenging marine environments.
+This configuration ensures the BathyImager system maintains reliable network connectivity for GPS synchronization, data transfer, and remote management even in challenging marine environments.

@@ -1,10 +1,13 @@
 #!/bin/bash
 
-# BathyCat Network Setup Script
+# BathyImager Network Setup Script
 # Configures dual Ethernet + WiFi connectivity for Raspberry Pi
-# Usage: sudo ./network_setup.sh
+# Usage: sudo ./network_setup.sh [--offline]
 
 set -e
+
+# Command line options
+OFFLINE_MODE=false
 
 # Colors for output
 RED='\033[0;31m'
@@ -35,7 +38,7 @@ check_root() {
 backup_configs() {
     print_status "Backing up existing network configurations..."
     
-    BACKUP_DIR="/etc/bathycat-network-backup-$(date +%Y%m%d-%H%M%S)"
+    BACKUP_DIR="/etc/bathyimager-network-backup-$(date +%Y%m%d-%H%M%S)"
     mkdir -p "$BACKUP_DIR"
     
     # Backup existing configurations
@@ -54,9 +57,25 @@ backup_configs() {
 
 # Function to install required packages
 install_packages() {
+    if [[ "$OFFLINE_MODE" == "true" ]]; then
+        print_warning "Skipping package installation (offline mode)"
+        print_status "Required packages: dhcpcd5, wpasupplicant, wireless-tools, net-tools, iproute2"
+        print_status "Install these manually when online: sudo apt update && sudo apt install -y dhcpcd5 wpasupplicant wireless-tools net-tools iproute2"
+        return 0
+    fi
+    
     print_status "Installing required networking packages..."
     
-    apt update
+    if ! command -v apt >/dev/null 2>&1; then
+        print_error "apt package manager not found"
+        exit 1
+    fi
+    
+    # Check if we can reach package repositories
+    if ! apt update >/dev/null 2>&1; then
+        print_error "Cannot reach package repositories. Use --offline flag or check internet connectivity"
+        exit 1
+    fi
     
     # Install networking tools
     packages=(
@@ -133,15 +152,33 @@ configure_wifi() {
 
 # Function to enable and start services
 enable_services() {
+    if [[ "$OFFLINE_MODE" == "true" ]]; then
+        print_warning "Skipping service enablement (offline mode)"
+        print_status "Enable services manually when packages are installed:"
+        print_status "  sudo systemctl enable dhcpcd"
+        print_status "  sudo systemctl enable wpa_supplicant@wlan0"
+        return 0
+    fi
+    
     print_status "Enabling network services..."
     
-    # Enable dhcpcd
-    systemctl enable dhcpcd
+    # Check if dhcpcd service exists before enabling
+    if systemctl list-unit-files dhcpcd.service >/dev/null 2>&1; then
+        systemctl enable dhcpcd
+        print_success "dhcpcd service enabled"
+    else
+        print_warning "dhcpcd service not found (may need to install dhcpcd5 package)"
+    fi
     
-    # Enable wpa_supplicant
-    systemctl enable wpa_supplicant@wlan0
+    # Check if wpa_supplicant service exists before enabling
+    if systemctl list-unit-files wpa_supplicant@.service >/dev/null 2>&1; then
+        systemctl enable wpa_supplicant@wlan0
+        print_success "wpa_supplicant@wlan0 service enabled"
+    else
+        print_warning "wpa_supplicant service not found (may need to install wpasupplicant package)"
+    fi
     
-    print_success "Network services enabled"
+    print_success "Network services configuration complete"
 }
 
 # Function to configure interface priorities
@@ -157,12 +194,36 @@ configure_interfaces() {
 
 # Function to test network configuration
 test_configuration() {
+    if [[ "$OFFLINE_MODE" == "true" ]]; then
+        print_warning "Skipping network testing (offline mode)"
+        print_status "Test network manually after installing packages and restarting services"
+        return 0
+    fi
+    
     print_status "Testing network configuration..."
     
-    # Restart networking services
+    # Restart networking services (only if they exist)
     print_status "Restarting network services..."
-    systemctl restart dhcpcd
-    systemctl restart wpa_supplicant@wlan0 || true
+    
+    if systemctl is-active --quiet dhcpcd; then
+        systemctl restart dhcpcd
+        print_status "Restarted dhcpcd service"
+    elif systemctl list-unit-files dhcpcd.service >/dev/null 2>&1; then
+        systemctl restart dhcpcd
+        print_status "Restarted dhcpcd service"
+    else
+        print_warning "dhcpcd service not available - install dhcpcd5 package first"
+    fi
+    
+    if systemctl is-active --quiet wpa_supplicant@wlan0; then
+        systemctl restart wpa_supplicant@wlan0
+        print_status "Restarted wpa_supplicant@wlan0 service"
+    elif systemctl list-unit-files wpa_supplicant@.service >/dev/null 2>&1; then
+        systemctl restart wpa_supplicant@wlan0 || true
+        print_status "Attempted to restart wpa_supplicant@wlan0 service"
+    else
+        print_warning "wpa_supplicant service not available - install wpasupplicant package first"
+    fi
     
     # Wait for interfaces to come up
     sleep 10
@@ -170,28 +231,44 @@ test_configuration() {
     # Check interface status
     print_status "Checking network interfaces..."
     
-    if ip link show eth0 | grep -q "state UP"; then
-        print_success "Ethernet interface is UP"
+    if command -v ip >/dev/null && ip link show eth0 >/dev/null 2>&1; then
+        if ip link show eth0 | grep -q "state UP"; then
+            print_success "Ethernet interface is UP"
+        else
+            print_warning "Ethernet interface is DOWN"
+        fi
     else
-        print_warning "Ethernet interface is DOWN"
+        print_warning "Cannot check eth0 status (ip command not available or interface not found)"
     fi
     
-    if ip link show wlan0 | grep -q "state UP"; then
-        print_success "WiFi interface is UP"
+    if command -v ip >/dev/null && ip link show wlan0 >/dev/null 2>&1; then
+        if ip link show wlan0 | grep -q "state UP"; then
+            print_success "WiFi interface is UP"
+        else
+            print_warning "WiFi interface is DOWN (may need WiFi credentials)"
+        fi
     else
-        print_warning "WiFi interface is DOWN (may need WiFi credentials)"
+        print_warning "Cannot check wlan0 status (ip command not available or interface not found)"
     fi
     
     # Show routing table
-    print_status "Current routing table:"
-    ip route list | head -10
+    if command -v ip >/dev/null; then
+        print_status "Current routing table:"
+        ip route list | head -10
+    else
+        print_warning "ip command not available - install iproute2 package to view routing"
+    fi
     
     # Test connectivity
     print_status "Testing connectivity..."
-    if ping -c 2 8.8.8.8 >/dev/null 2>&1; then
-        print_success "Internet connectivity confirmed"
+    if command -v ping >/dev/null; then
+        if ping -c 2 8.8.8.8 >/dev/null 2>&1; then
+            print_success "Internet connectivity confirmed"
+        else
+            print_warning "No internet connectivity (check network settings)"
+        fi
     else
-        print_warning "No internet connectivity (check network settings)"
+        print_warning "ping command not available - install iputils-ping package to test connectivity"
     fi
 }
 
@@ -199,7 +276,7 @@ test_configuration() {
 show_usage() {
     cat << EOF
 
-BathyCat Network Configuration Complete!
+BathyImager Network Configuration Complete!
 
 NEXT STEPS:
 1. Edit WiFi credentials:
@@ -226,14 +303,80 @@ FILES MODIFIED:
 - /etc/wpa_supplicant/wpa_supplicant.conf
 
 BACKUP LOCATION:
-- Configuration backups are in /etc/bathycat-network-backup-*
+- Configuration backups are in /etc/bathyimager-network-backup-*
+
+$(if [[ "$OFFLINE_MODE" == "true" ]]; then
+    echo ""
+    echo "⚠️  OFFLINE MODE - ADDITIONAL STEPS REQUIRED:"
+    echo ""
+    echo "1. INSTALL PACKAGES (when you get internet access):"
+    echo "   sudo apt update"
+    echo "   sudo apt install -y dhcpcd5 wpasupplicant wireless-tools net-tools iproute2"
+    echo ""
+    echo "2. ENABLE SERVICES:"
+    echo "   sudo systemctl enable dhcpcd"
+    echo "   sudo systemctl enable wpa_supplicant@wlan0"
+    echo ""
+    echo "3. THEN FOLLOW NORMAL STEPS ABOVE"
+    echo ""
+fi)
+
+EOF
+}
+
+# Function to parse command line arguments
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --offline)
+                OFFLINE_MODE=true
+                shift
+                ;;
+            --help|-h)
+                show_help
+                exit 0
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+}
+
+# Function to show help
+show_help() {
+    cat << EOF
+BathyImager Network Setup Script
+
+USAGE:
+    sudo ./network_setup.sh [OPTIONS]
+
+OPTIONS:
+    --offline          Skip package installation (for offline setup)
+    --help, -h         Show this help message
+
+DESCRIPTION:
+    Configures dual Ethernet + WiFi connectivity for Raspberry Pi.
+    Sets up automatic failover with Ethernet as primary and WiFi as backup.
+
+EXAMPLES:
+    sudo ./network_setup.sh                # Normal setup (requires internet)
+    sudo ./network_setup.sh --offline      # Offline setup (skip packages)
 
 EOF
 }
 
 # Main installation function
 main() {
-    print_status "BathyCat Network Setup Starting..."
+    parse_arguments "$@"
+    
+    if [[ "$OFFLINE_MODE" == "true" ]]; then
+        print_status "BathyImager Network Setup Starting (OFFLINE MODE)..."
+    else
+        print_status "BathyImager Network Setup Starting..."
+    fi
     
     check_root
     backup_configs
@@ -244,7 +387,7 @@ main() {
     enable_services
     test_configuration
     
-    print_success "BathyCat Network Setup Complete!"
+    print_success "BathyImager Network Setup Complete!"
     show_usage
 }
 

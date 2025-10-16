@@ -1,10 +1,10 @@
-# BathyCat Seabed Imager
+# BathyImager Seabed Imager
 
 An autonomous seabed imaging system for surface vessels, capturing geotagged images and storing them on USB drives.
 
 ## Project Overview
 
-The BathyCat Seabed Imager is designed to run on autonomous surface vessels (ASVs) to capture continuous imagery of the seabed. The system uses a downward-facing camera, integrates GPS coordinates into image metadata, and stores everything on external USB storage for later analysis.
+The BathyImager Seabed Imager is designed to run on autonomous surface vessels (ASVs) to capture continuous imagery of the seabed. The system uses a downward-facing camera, integrates GPS coordinates into image metadata, and stores everything on external USB storage for later analysis.
 
 ### Key Features
 
@@ -31,8 +31,8 @@ The BathyCat Seabed Imager is designed to run on autonomous surface vessels (ASV
 
 ```bash
 # Clone the repository
-git clone https://github.com/Mike-Bollinger/BathyCat-Seabed-Imager.git
-cd BathyCat-Seabed-Imager
+git clone https://github.com/Mike-Bollinger/BathyImager-Seabed-Imager.git
+cd BathyImager-Seabed-Imager
 
 # Run the installation script
 sudo ./scripts/install.sh
@@ -50,18 +50,18 @@ sudo ./scripts/install.sh
 
 ```bash
 # Create default configuration
-cd /opt/bathycat/src && sudo python3 -m config --create-default
+cd /opt/bathyimager/src && sudo python3 -m config --create-default
 
 # Edit configuration if needed
-sudo nano /etc/bathycat/config.json
+sudo nano /etc/bathyimager/config.json
 
 # Validate configuration
-cd /opt/bathycat/src && sudo python3 -m config --validate
+cd /opt/bathyimager/src && sudo python3 -m config --validate
 ```
 
 ### 3. Network Configuration (Dual Ethernet + WiFi)
 
-BathyCat supports simultaneous Ethernet and WiFi connectivity for maximum reliability:
+BathyImager supports simultaneous Ethernet and WiFi connectivity for maximum reliability:
 
 ```bash
 # Setup dual networking (Ethernet primary, WiFi backup)
@@ -146,23 +146,23 @@ The enhanced configuration system (`src/config.py`) provides:
 ### File Organization
 
 ```
-/opt/bathycat/              # Installation directory
+/opt/bathyimager/              # Installation directory
 ├── src/                    # Source code
 ├── scripts/                # Installation and maintenance scripts
 ├── venv/                   # Python virtual environment
 ├── VERSION                 # Version information
 └── backups/               # Update backups
 
-/etc/bathycat/             # Configuration directory
+/etc/bathyimager/             # Configuration directory
 └── config.json            # Main configuration file
 
-/var/log/bathycat/         # Log directory
-├── bathycat.log           # Application logs
+/var/log/bathyimager/         # Log directory
+├── bathyimager.log           # Application logs
 └── system.log             # System-level logs
 
 /media/usb/                # Default USB storage
 └── YYYY/MM/DD/            # Date-based organization
-    └── bathycat_*.jpg     # Geotagged images
+    └── bathyimager_*.jpg     # Geotagged images
 ```
 
 ## Configuration Reference
@@ -217,7 +217,7 @@ The enhanced configuration system (`src/config.py`) provides:
     "cleanup_days": 30,                     # Delete files older than N days
     "min_free_space_mb": 1000,              # Minimum free space (MB)
     "directory_structure": "%Y/%m/%d",      # Date-based folders
-    "filename_format": "bathycat_%Y%m%d_%H%M%S_{counter:04d}.jpg"
+    "filename_format": "bathyimager_%Y%m%d_%H%M%S_{counter:04d}.jpg"
   }
 }
 ```
@@ -292,16 +292,16 @@ The enhanced configuration system (`src/config.py`) provides:
 
 ```bash
 # View real-time logs
-sudo journalctl -u bathycat -f
+sudo journalctl -u bathyimager -f
 
 # View recent logs
-sudo journalctl -u bathycat --since "1 hour ago"
+sudo journalctl -u bathyimager --since "1 hour ago"
 
 # View log files directly
-sudo tail -f /var/log/bathycat/bathycat.log
+sudo tail -f /var/log/bathyimager/bathyimager.log
 
 # Check system logs
-sudo tail -f /var/log/syslog | grep bathycat
+sudo tail -f /var/log/syslog | grep bathyimager
 ```
 
 ### Performance Monitoring
@@ -326,8 +326,8 @@ du -sh /media/usb/*
 
 ```bash
 # Clone repository
-git clone https://github.com/Mike-Bollinger/BathyCat-Seabed-Imager.git
-cd BathyCat-Seabed-Imager
+git clone https://github.com/Mike-Bollinger/BathyImager-Seabed-Imager.git
+cd BathyImager-Seabed-Imager
 
 # Create virtual environment
 python3 -m venv venv

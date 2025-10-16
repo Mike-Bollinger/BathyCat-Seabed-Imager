@@ -1,22 +1,22 @@
-# BathyCat Troubleshooting Guide
+# BathyImager Troubleshooting Guide
 
-This guide helps diagnose and resolve common issues with the BathyCat Seabed Imager system.
+This guide helps diagnose and resolve common issues with the BathyImager Seabed Imager system.
 
 ## Quick Diagnostics
 
 ### System Health Check
 ```bash
 # Check service status
-sudo systemctl status bathycat
+sudo systemctl status bathyimager
 
 # View recent logs
-sudo journalctl -u bathycat --since "1 hour ago"
+sudo journalctl -u bathyimager --since "1 hour ago"
 
 # Check hardware detection
-cd /opt/bathycat/src && sudo python3 -m config --show-hardware
+cd /opt/bathyimager/src && sudo python3 -m config --show-hardware
 
 # Validate configuration
-cd /opt/bathycat/src && sudo python3 -m config --validate
+cd /opt/bathyimager/src && sudo python3 -m config --validate
 
 # Check disk usage
 df -h /media/usb
@@ -39,21 +39,21 @@ df -h /media/usb
 ### 1. Service Won't Start
 
 #### Symptoms
-- `systemctl status bathycat` shows failed
+- `systemctl status bathyimager` shows failed
 - No LED activity
 - No log entries
 
 #### Diagnosis
 ```bash
 # Check detailed service status
-sudo systemctl status bathycat -l
+sudo systemctl status bathyimager -l
 
 # Check service logs
-sudo journalctl -u bathycat --no-pager
+sudo journalctl -u bathyimager --no-pager
 
 # Test manual startup
-cd /opt/bathycat
-sudo -u bathycat ./venv/bin/python -m bathycat.main
+cd /opt/bathyimager
+sudo -u bathyimager ./venv/bin/python -m bathyimager.main
 ```
 
 #### Solutions
@@ -61,26 +61,26 @@ sudo -u bathycat ./venv/bin/python -m bathycat.main
 **Configuration Error:**
 ```bash
 # Validate configuration
-cd /opt/bathycat/src && sudo python3 -m config --validate
+cd /opt/bathyimager/src && sudo python3 -m config --validate
 
 # Reset to defaults if needed
-cd /opt/bathycat/src && sudo python3 -m config --create-default
+cd /opt/bathyimager/src && sudo python3 -m config --create-default
 ```
 
 **Permission Issues:**
 ```bash
 # Fix ownership
-sudo chown -R bathycat:bathycat /var/log/bathycat
-sudo chown -R pi:pi /opt/bathycat
+sudo chown -R bathyimager:bathyimager /var/log/bathyimager
+sudo chown -R pi:pi /opt/bathyimager
 
 # Fix user groups
-sudo usermod -a -G video,dialout,plugdev bathycat
+sudo usermod -a -G video,dialout,plugdev bathyimager
 ```
 
 **Missing Dependencies:**
 ```bash
 # Reinstall Python packages
-cd /opt/bathycat
+cd /opt/bathyimager
 source venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -105,7 +105,7 @@ ffplay /dev/video0
 # Press 'q' to quit
 
 # Check permissions
-groups bathycat | grep video
+groups bathyimager | grep video
 ```
 
 #### Solutions
