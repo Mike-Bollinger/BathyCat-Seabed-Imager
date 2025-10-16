@@ -44,6 +44,10 @@ update_system() {
 install_dependencies() {
     print_status "Installing system dependencies..."
     
+    # Note: Updated package names for Debian Trixie compatibility (2025)
+    # - libatlas-base-dev → libopenblas-dev (BLAS/LAPACK libraries)
+    # - exfat-utils → exfatprogs (exFAT filesystem utilities)
+    
     apt-get install -y \
         python3 \
         python3-pip \
@@ -62,14 +66,14 @@ install_dependencies() {
         libxvidcore-dev \
         libx264-dev \
         libgtk-3-dev \
-        libatlas-base-dev \
+        libopenblas-dev \
         gfortran \
         python3-numpy \
         fswebcam \
         v4l-utils \
         usbutils \
         exfat-fuse \
-        exfat-utils \
+        exfatprogs \
         git \
         wget \
         unzip

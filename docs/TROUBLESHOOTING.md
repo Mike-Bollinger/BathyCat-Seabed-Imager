@@ -44,6 +44,44 @@ journalctl -u bathycat-imager --no-pager -n 20
 
 ---
 
+## Installation Issues
+
+### Problem: Package Installation Failures
+
+**Symptoms:**
+- `Package 'libatlas-base-dev' has no installation candidate`
+- `Package 'exfat-utils' has no installation candidate`
+- Installation script fails during dependency installation
+
+**Cause:**
+Package names have changed in newer Debian versions (Trixie/Bookworm).
+
+**Solutions:**
+
+1. **Use Updated Installation Script**
+   ```bash
+   # Pull latest version with updated package names
+   git pull origin main
+   sudo scripts/install.sh
+   ```
+
+2. **Manual Package Installation (if needed)**
+   ```bash
+   # Install updated package names
+   sudo apt install -y libopenblas-dev exfatprogs
+   
+   # Legacy packages for older systems (if above fails)
+   sudo apt install -y libatlas-base-dev exfat-utils
+   ```
+
+3. **Package Name Reference**
+   | Old Package | New Package | Purpose |
+   |-------------|-------------|---------|
+   | `libatlas-base-dev` | `libopenblas-dev` | BLAS/LAPACK math libraries |
+   | `exfat-utils` | `exfatprogs` | exFAT filesystem utilities |
+
+---
+
 ## GPS Issues
 
 ### Problem: GPS Not Acquiring Fix
