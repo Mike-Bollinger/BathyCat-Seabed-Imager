@@ -59,7 +59,32 @@ sudo nano /etc/bathycat/config.json
 cd /opt/bathycat/src && sudo python3 -m config --validate
 ```
 
-### 3. Service Management
+### 3. Network Configuration (Dual Ethernet + WiFi)
+
+BathyCat supports simultaneous Ethernet and WiFi connectivity for maximum reliability:
+
+```bash
+# Setup dual networking (Ethernet primary, WiFi backup)
+sudo ./scripts/network_setup.sh
+
+# Configure WiFi networks interactively
+sudo ./scripts/wifi_config.sh
+
+# Check network status
+./scripts/network_status.sh
+
+# Test connectivity
+./scripts/network_test.sh
+```
+
+**Key Features:**
+- **Automatic Priority**: Ethernet (metric 100) preferred over WiFi (metric 300)
+- **Seamless Failover**: Maintains connectivity if primary interface fails
+- **Easy Management**: Interactive scripts for configuration and monitoring
+
+See [Network Setup Guide](docs/NETWORK_SETUP.md) for detailed configuration instructions.
+
+### 4. Service Management
 
 ```bash
 # Start the service
@@ -463,6 +488,34 @@ cd /opt/bathycat/src
 sudo -u pi ../venv/bin/python -m main
 ```
 
+#### Network Connectivity Issues
+
+```bash
+# Check network status
+./scripts/network_status.sh
+
+# Test connectivity
+./scripts/network_test.sh
+
+# Both interfaces down
+sudo ip link set eth0 up
+sudo ip link set wlan0 up
+sudo systemctl restart dhcpcd
+
+# WiFi not connecting  
+sudo ./scripts/wifi_config.sh
+
+# Wrong interface priority
+sudo systemctl restart dhcpcd
+
+# No internet despite connection
+sudo systemctl restart dhcpcd wpa_supplicant@wlan0
+
+# Check for NetworkManager conflicts
+sudo systemctl disable NetworkManager
+sudo systemctl stop NetworkManager
+```
+
 ### Error Codes
 
 | Code | Description | Solution |
@@ -472,6 +525,9 @@ sudo -u pi ../venv/bin/python -m main
 | E003 | Storage unavailable | Check USB drive connection |
 | E004 | Configuration invalid | Fix configuration file |
 | E005 | Insufficient disk space | Clean storage or add capacity |
+| E006 | Network connectivity lost | Check network configuration |
+| E007 | Ethernet interface down | Check cable and interface status |
+| E008 | WiFi authentication failed | Verify WiFi credentials |
 
 ### Recovery Procedures
 
