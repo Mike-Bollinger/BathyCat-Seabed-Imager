@@ -492,6 +492,7 @@ Session:
    chmod +x scripts/install.sh
    
    # Run installation (requires sudo)
+   # Note: Script automatically detects your username (e.g., bathyimager, pi)
    sudo scripts/install.sh
    ```
 

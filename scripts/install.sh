@@ -23,7 +23,22 @@ print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 INSTALL_DIR="/opt/bathycat"
 CONFIG_DIR="/etc/bathycat"
 SERVICE_NAME="bathycat-imager"
-USER="pi"
+
+# Detect actual user (the one who invoked sudo)
+if [ -n "$SUDO_USER" ]; then
+    USER="$SUDO_USER"
+else
+    USER="pi"  # Fallback to pi if SUDO_USER not set
+fi
+
+# Validate user exists
+if ! id "$USER" &>/dev/null; then
+    print_error "User '$USER' does not exist on this system"
+    print_error "Available users: $(cut -d: -f1 /etc/passwd | grep -v '^_' | head -10 | tr '\n' ' ')"
+    exit 1
+fi
+
+print_status "Using user: $USER"
 
 # Check if running as root
 check_root() {
