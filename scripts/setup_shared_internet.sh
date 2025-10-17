@@ -27,13 +27,14 @@ fi
 
 print_status "Setting up internet connection sharing via Ethernet..."
 
-# Configure IP address
+# Configure IP address for Pi
 print_status "Configuring IP address for eth0..."
-ip addr add 192.168.137.100/24 dev eth0 2>/dev/null || true
+ip addr add 192.168.137.200/24 dev eth0 2>/dev/null || true
 ip link set eth0 up
 
-# Add default route
+# Add default route via computer (192.168.137.1)
 print_status "Adding default route via computer (192.168.137.1)..."
+ip route del default 2>/dev/null || true
 ip route add default via 192.168.137.1 dev eth0 2>/dev/null || true
 
 # Set DNS
@@ -76,7 +77,7 @@ if ping -c 3 -W 5 google.com >/dev/null 2>&1; then
     print_status "Cleaning up temporary network configuration..."
     # Remove temporary config - dhcpcd will take over
     ip route del default via 192.168.137.1 dev eth0 2>/dev/null || true
-    ip addr del 192.168.137.100/24 dev eth0 2>/dev/null || true
+    ip addr del 192.168.137.200/24 dev eth0 2>/dev/null || true
     
     print_success "Setup complete! You can now run:"
     print_status "  sudo ./scripts/network_setup.sh"
@@ -87,6 +88,7 @@ else
     print_error "1. Computer internet sharing is enabled"
     print_error "2. Ethernet cable is connected"
     print_error "3. Computer Ethernet adapter is set to 192.168.137.1"
+    print_error "4. Computer is sharing internet through the Ethernet adapter"
     
     print_status "Current network configuration:"
     print_status "IP: $(ip addr show eth0 | grep 'inet ' | awk '{print $2}' || echo 'None')"
