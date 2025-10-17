@@ -174,7 +174,7 @@ install_system_dependencies() {
     apt-get install -y \
         libopencv-dev \
         python3-opencv \
-        libatlas-base-dev \
+        libopenblas-dev \
         libjpeg-dev \
         libpng-dev \
         libtiff-dev \
@@ -185,11 +185,29 @@ install_system_dependencies() {
         libxvidcore-dev \
         libx264-dev
     
-    # GPIO and hardware support
-    apt-get install -y \
-        python3-rpi.gpio \
-        raspberrypi-kernel-headers \
-        i2c-tools
+    # GPIO and hardware support (skip if packages not available)
+    if apt-cache show python3-rpi.gpio >/dev/null 2>&1; then
+        apt-get install -y python3-rpi.gpio
+        print_success "python3-rpi.gpio installed from system packages"
+    else
+        print_warning "python3-rpi.gpio not available from apt - will install via pip"
+    fi
+    
+    # Try different kernel header packages for newer systems
+    if apt-cache show raspberrypi-kernel-headers >/dev/null 2>&1; then
+        apt-get install -y raspberrypi-kernel-headers
+        print_success "raspberrypi-kernel-headers installed"
+    elif apt-cache show linux-headers-rpi >/dev/null 2>&1; then
+        apt-get install -y linux-headers-rpi
+        print_success "linux-headers-rpi installed"
+    elif apt-cache show linux-headers-$(uname -r) >/dev/null 2>&1; then
+        apt-get install -y linux-headers-$(uname -r)
+        print_success "linux-headers-$(uname -r) installed"
+    else
+        print_warning "No kernel headers package available - some GPIO functionality may be limited"
+    fi
+    
+    apt-get install -y i2c-tools
     
     # Serial/USB support
     apt-get install -y \
@@ -262,8 +280,13 @@ install_python_dependencies() {
         piexif \
         pynmea2 \
         pyserial \
-        RPi.GPIO \
         psutil
+    
+    # Try to install RPi.GPIO (may need different approach on newer OS)
+    if ! sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install RPi.GPIO; then
+        print_warning "RPi.GPIO installation failed - trying alternative gpiozero"
+        sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install gpiozero
+    fi
     
     # Development dependencies (if dev mode)
     if [[ "$DEV_MODE" == true ]]; then
@@ -515,7 +538,7 @@ run_tests() {
 
 # Function to enable and start service
 enable_service() {
-    print_status "Enabling and starting BathyCat imaging service..."
+    print_status "Enabling and starting BathyImager imaging service..."
     
     # Enable service
     systemctl enable "$SERVICE_NAME"
@@ -526,15 +549,15 @@ enable_service() {
     # Check status
     sleep 3
     if systemctl is-active --quiet "$SERVICE_NAME"; then
-        print_success "BathyCat imaging service is running"
+        print_success "BathyImager imaging service is running"
     else
-        print_warning "BathyCat imaging service failed to start - check logs with: journalctl -u $SERVICE_NAME"
+        print_warning "BathyImager imaging service failed to start - check logs with: journalctl -u $SERVICE_NAME"
     fi
 }
 
 # Function to show installation summary
 show_summary() {
-    print_success "BathyCat installation completed!"
+    print_success "BathyImager installation completed!"
     
     echo
     echo "Installation Summary:"
@@ -568,8 +591,8 @@ show_summary() {
 
 # Main installation function
 main() {
-    echo "BathyCat Seabed Imager Installation Script"
-    echo "=========================================="
+    echo "BathyImager Seabed Imager Installation Script"
+    echo "=============================================="
     echo
     
     parse_args "$@"
