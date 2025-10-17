@@ -52,11 +52,11 @@ echo "🚀 BathyImager Seabed Imager - Quick Update"
 echo "========================================"
 
 # Check if we're in the right directory
-if [ ! -f "src/bathycat_imager.py" ]; then
+if [ ! -f "src/main.py" ]; then
     echo "❌ Error: Not in BathyImager project directory"
     echo "   Please run this script from the project root"
     echo "   Current directory: $(pwd)"
-    echo "   Looking for: src/bathycat_imager.py"
+    echo "   Looking for: src/main.py"
     echo "   Expected location: ~/BathyCat-Seabed-Imager"
     ls -la
     exit 1
@@ -171,14 +171,28 @@ fi
 
 # Update dependencies
 echo "📦 Updating dependencies..."
-if pip3 install -r requirements.txt --user --quiet 2>/dev/null; then
-    echo "   Dependencies updated successfully"
-elif pip3 install -r requirements.txt --user --break-system-packages --quiet 2>/dev/null; then
-    echo "   Dependencies updated (with system override)"
+if [ -d "venv" ]; then
+    echo "   Using virtual environment..."
+    source venv/bin/activate
+    if pip install -r requirements.txt --quiet 2>/dev/null; then
+        echo "   Dependencies updated successfully"
+    else
+        echo "⚠️  Could not update dependencies in virtual environment"
+        echo "   You may need to install manually:"
+        echo "   source venv/bin/activate && pip install -r requirements.txt"
+    fi
+    deactivate
 else
-    echo "⚠️  Could not update dependencies automatically"
-    echo "   You may need to install manually:"
-    echo "   pip3 install -r requirements.txt --user --break-system-packages"
+    echo "   No virtual environment found - using system pip..."
+    if pip3 install -r requirements.txt --user --quiet 2>/dev/null; then
+        echo "   Dependencies updated successfully"
+    elif pip3 install -r requirements.txt --user --break-system-packages --quiet 2>/dev/null; then
+        echo "   Dependencies updated (with system override)"
+    else
+        echo "⚠️  Could not update dependencies automatically"
+        echo "   You may need to install manually:"
+        echo "   pip3 install -r requirements.txt --user --break-system-packages"
+    fi
 fi
 
 # Restore configuration
@@ -192,6 +206,8 @@ fi
 echo "🔒 Fixing permissions..."
 chmod +x scripts/*.sh
 chmod +x update
+chmod +x setup_dev.sh
+[ -f "run_bathyimager.sh" ] && chmod +x run_bathyimager.sh
 
 # Show new version
 echo "🎉 Updated to:"
@@ -199,10 +215,20 @@ git log --oneline -1
 
 # Test the update
 echo "🧪 Testing update..."
-if python3 -c "import sys; sys.path.append('src'); from bathycat_imager import BathyImager; print('✅ Main app loads successfully')"; then
-    echo "   App test passed"
+if [ -d "venv" ]; then
+    source venv/bin/activate
+    if python -c "import sys; sys.path.append('src'); import main; print('✅ Main app loads successfully')" 2>/dev/null; then
+        echo "   App test passed"
+    else
+        echo "❌ App test failed - check for errors"
+    fi
+    deactivate
 else
-    echo "❌ App test failed - check for errors"
+    if python3 -c "import sys; sys.path.append('src'); import main; print('✅ Main app loads successfully')" 2>/dev/null; then
+        echo "   App test passed"
+    else
+        echo "❌ App test failed - check for errors"
+    fi
 fi
 
 # Restart service
@@ -212,7 +238,7 @@ sudo systemctl start bathyimager 2>/dev/null && echo "   Service started" || ech
 echo ""
 echo "✨ Update complete!"
 echo "   You can now run:"
-echo "   • python3 src/bathycat_imager.py"
-echo "   • python3 tests/test_camera_capture.py --usb-only"
+echo "   • python3 src/main.py --config config/bathyimager_config.json"
+echo "   • ./run_bathyimager.sh"
 echo ""
 echo "   To check status: sudo systemctl status bathyimager"
