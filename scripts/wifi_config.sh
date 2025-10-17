@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# BathyCat WiFi Configuration Helper
+# BathyImager WiFi Configuration Helper
 # Interactive script to configure WiFi networks
 # Usage: sudo ./wifi_config.sh
 
@@ -366,7 +366,7 @@ show_config() {
 show_menu() {
     cat << EOF
 
-${BOLD}${BLUE}BathyCat WiFi Configuration Menu${NC}
+${BOLD}${BLUE}BathyImager WiFi Configuration Menu${NC}
 
 1) Scan for networks
 2) Add new network
@@ -447,7 +447,7 @@ main() {
     backup_config
     
     clear
-    print_header "BathyCat WiFi Configuration Helper"
+    print_header "BathyImager WiFi Configuration Helper"
     print_status "WiFi configuration file: $WPA_CONF"
     
     # Quick status check

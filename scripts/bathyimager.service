@@ -1,6 +1,6 @@
 [Unit]
-Description=BathyCat Seabed Imager Service
-Documentation=https://github.com/Mike-Bollinger/BathyCat-Seabed-Imager
+Description=BathyImager Seabed Imager Service
+Documentation=https://github.com/Mike-Bollinger/BathyImager-Seabed-Imager
 After=network.target multi-user.target
 Wants=network.target
 StartLimitIntervalSec=300
@@ -10,11 +10,11 @@ StartLimitBurst=5
 Type=simple
 User=pi
 Group=pi
-WorkingDirectory=/opt/bathycat/src
-Environment=PYTHONPATH=/opt/bathycat/src
+WorkingDirectory=/opt/bathyimager/src
+Environment=PYTHONPATH=/opt/bathyimager/src
 Environment=PYTHONUNBUFFERED=1
 ExecStartPre=/bin/sleep 10
-ExecStart=/opt/bathycat/venv/bin/python -m main --config /etc/bathycat/config.json
+ExecStart=/opt/bathyimager/venv/bin/python -m main --config /etc/bathyimager/config.json
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=mixed
 KillSignal=SIGTERM
@@ -29,7 +29,7 @@ SyslogIdentifier=bathyimager
 NoNewPrivileges=true
 ProtectHome=true
 ProtectSystem=strict
-ReadWritePaths=/opt/bathycat /etc/bathycat /var/log/bathycat /media /mnt
+ReadWritePaths=/opt/bathyimager /etc/bathyimager /var/log/bathyimager /media /mnt
 PrivateTmp=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
@@ -68,4 +68,4 @@ ProcSubset=pid
 
 [Install]
 WantedBy=multi-user.target
-Alias=bathycat-imager.service
+Alias=bathyimager-service.service

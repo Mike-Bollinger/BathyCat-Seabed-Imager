@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# BathyCat Network Test Script  
+# BathyImager Network Test Script  
 # Tests network connectivity scenarios for dual Ethernet + WiFi setup
 # Usage: ./network_test.sh [--interface eth0|wlan0] [--continuous]
 
@@ -28,7 +28,7 @@ print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # Function to show usage
 show_usage() {
     cat << EOF
-BathyCat Network Test Script
+BathyImager Network Test Script
 
 USAGE:
     ./network_test.sh [OPTIONS]
@@ -294,7 +294,7 @@ monitor_continuous() {
 main() {
     parse_args "$@"
     
-    echo -e "${BOLD}${BLUE}BathyCat Network Test Suite${NC}"
+    echo -e "${BOLD}${BLUE}BathyImager Network Test Suite${NC}"
     echo -e "${BLUE}Started: $(date)${NC}"
     echo ""
     

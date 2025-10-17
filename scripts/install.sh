@@ -1,9 +1,9 @@
 #!/bin/bash
 #
-# BathyCat Seabed Imager Installation Script
-# =========================================
+# BathyImager Seabed Imager Installation Script
+# =============================================
 #
-# This script installs the BathyCat system on a Raspberry Pi with all
+# This script installs the BathyImager system on a Raspberry Pi with all
 # dependencies, system services, and configuration.
 #
 # Usage: sudo ./install.sh [options]
@@ -25,9 +25,9 @@ NC='\033[0m' # No Color
 
 # Installation configuration
 INSTALL_USER="pi"
-INSTALL_DIR="/opt/bathycat"
-CONFIG_DIR="/etc/bathycat"
-LOG_DIR="/var/log/bathycat"
+INSTALL_DIR="/opt/bathyimager"
+CONFIG_DIR="/etc/bathyimager"
+LOG_DIR="/var/log/bathyimager"
 SERVICE_NAME="bathyimager"
 PYTHON_ENV="$INSTALL_DIR/venv"
 
@@ -64,7 +64,7 @@ check_root() {
 # Function to show help
 show_help() {
     cat << EOF
-BathyCat Seabed Imager Installation Script
+BathyImager Seabed Imager Installation Script
 
 Usage: sudo $0 [options]
 
@@ -77,10 +77,10 @@ Options:
 This script will:
 1. Update system packages
 2. Install Python dependencies
-3. Install BathyCat software
+3. Install BathyImager software
 4. Configure system services
 5. Set up directories and permissions
-6. Enable and start the BathyCat imaging service
+6. Enable and start the BathyImager imaging service
 
 Requirements:
 - Raspberry Pi OS (Bullseye or later)
@@ -279,9 +279,9 @@ install_python_dependencies() {
     print_success "Python dependencies installed"
 }
 
-# Function to install BathyCat software
-install_bathycat() {
-    print_status "Installing BathyCat software..."
+# Function to install BathyImager software
+install_bathyimager() {
+    print_status "Installing BathyImager software..."
     
     # Copy source code
     if [[ "$DEV_MODE" == true ]]; then
@@ -290,7 +290,7 @@ install_bathycat() {
             ln -sfn "$(pwd)/src" "$INSTALL_DIR/src"
             chown -h "$INSTALL_USER:$INSTALL_USER" "$INSTALL_DIR/src"
         else
-            print_error "Source directory not found. Run from BathyCat project root."
+            print_error "Source directory not found. Run from BathyImager project root."
             exit 1
         fi
     else
@@ -299,7 +299,7 @@ install_bathycat() {
             cp -r src "$INSTALL_DIR/"
             chown -R "$INSTALL_USER:$INSTALL_USER" "$INSTALL_DIR"
         else
-            print_error "Source directory not found. Run from BathyCat project root."
+            print_error "Source directory not found. Run from BathyImager project root."
             exit 1
         fi
     fi
@@ -307,7 +307,7 @@ install_bathycat() {
     # Make main script executable
     chmod +x "$INSTALL_DIR/src/main.py"
     
-    print_success "BathyCat software installed"
+    print_success "BathyImager software installed"
 }
 
 # Function to install configuration
@@ -315,13 +315,13 @@ install_configuration() {
     print_status "Installing configuration..."
     
     # Copy configuration file
-    if [[ -f "config/bathycat_config.json" ]]; then
-        cp "config/bathycat_config.json" "$CONFIG_DIR/config.json"
+    if [[ -f "config/bathyimager_config.json" ]]; then
+        cp "config/bathyimager_config.json" "$CONFIG_DIR/config.json"
         
         # Update paths in config for production
         if [[ "$DEV_MODE" == false ]]; then
-            sed -i 's|"/var/log/bathycat/bathycat.log"|"/var/log/bathycat/bathycat.log"|g' "$CONFIG_DIR/config.json"
-            sed -i 's|"/media/usb-storage/bathycat"|"/media/usb-storage/bathycat"|g' "$CONFIG_DIR/config.json"
+            sed -i 's|"/var/log/bathyimager/bathyimager.log"|"/var/log/bathyimager/bathyimager.log"|g' "$CONFIG_DIR/config.json"
+            sed -i 's|"/media/usb-storage/bathyimager"|"/media/usb-storage/bathyimager"|g' "$CONFIG_DIR/config.json"
         fi
         
         chown "$INSTALL_USER:$INSTALL_USER" "$CONFIG_DIR/config.json"
@@ -365,7 +365,7 @@ create_default_config() {
   "enable_preview": false,
   "preview_width": 320,
   
-  "storage_base_path": "/media/usb-storage/bathycat",
+  "storage_base_path": "/media/usb-storage/bathyimager",
   "min_free_space_gb": 5.0,
   "auto_cleanup_enabled": true,
   "cleanup_threshold_gb": 10.0,
@@ -378,7 +378,7 @@ create_default_config() {
   
   "log_level": "INFO",
   "log_to_file": true,
-  "log_file_path": "/var/log/bathycat/bathycat.log",
+  "log_file_path": "/var/log/bathyimager/bathyimager.log",
   "log_max_size_mb": 100,
   "log_backup_count": 5,
   
@@ -396,8 +396,8 @@ create_systemd_service() {
     
     cat > "/etc/systemd/system/$SERVICE_NAME.service" << EOF
 [Unit]
-Description=BathyCat Seabed Imager
-Documentation=https://github.com/Mike-Bollinger/BathyCat-Seabed-Imager
+Description=BathyImager Seabed Imager
+Documentation=https://github.com/Mike-Bollinger/BathyImager-Seabed-Imager
 After=network.target multi-user.target
 Wants=network.target
 
@@ -407,12 +407,12 @@ User=$INSTALL_USER
 Group=$INSTALL_USER
 WorkingDirectory=$INSTALL_DIR
 Environment=PYTHONPATH=$INSTALL_DIR
-ExecStart=$PYTHON_ENV/bin/python -m bathycat.main --config $CONFIG_DIR/config.json
+ExecStart=$PYTHON_ENV/bin/python -m main --config $CONFIG_DIR/config.json
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=bathycat
+SyslogIdentifier=bathyimager
 
 # Security settings
 NoNewPrivileges=yes
@@ -445,7 +445,7 @@ EOF
 setup_log_rotation() {
     print_status "Setting up log rotation..."
     
-    cat > "/etc/logrotate.d/bathycat" << EOF
+    cat > "/etc/logrotate.d/bathyimager" << EOF
 $LOG_DIR/*.log {
     daily
     missingok
@@ -472,13 +472,13 @@ setup_usb_automount() {
     
     # Add to fstab for auto-mount (optional)
     if ! grep -q "usb-storage" /etc/fstab; then
-        echo "# BathyCat USB Storage" >> /etc/fstab
-        echo "# LABEL=BATHYCAT /media/usb-storage auto defaults,user,noauto 0 0" >> /etc/fstab
+        echo "# BathyImager USB Storage" >> /etc/fstab
+        echo "# LABEL=BATHYIMAGER /media/usb-storage auto defaults,user,noauto 0 0" >> /etc/fstab
     fi
     
     # Create udev rule for auto-mount
-    cat > "/etc/udev/rules.d/99-bathycat-storage.rules" << EOF
-# BathyCat USB Storage Auto-mount
+    cat > "/etc/udev/rules.d/99-bathyimager-storage.rules" << EOF
+# BathyImager USB Storage Auto-mount
 SUBSYSTEM=="block", ATTRS{idVendor}=="*", ATTRS{idProduct}=="*", \
 ACTION=="add", KERNEL=="sd[a-z][0-9]", \
 RUN+="/bin/mkdir -p /media/usb-storage", \
@@ -500,13 +500,13 @@ run_tests() {
     print_status "Running system tests..."
     
     # Test Python environment
-    if ! sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/python" -c "import sys; sys.path.append('$INSTALL_DIR/src'); import main; print('BathyCat import successful')"; then
+    if ! sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/python" -c "import sys; sys.path.append('$INSTALL_DIR/src'); import main; print('BathyImager import successful')"; then
         print_error "Python import test failed"
         return 1
     fi
     
     # Test configuration
-    if ! sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/python" -c "import sys; sys.path.append('$INSTALL_DIR/src'); from main import BathyCatService; print('Configuration test passed')"; then
+    if ! sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/python" -c "import sys; sys.path.append('$INSTALL_DIR/src'); from main import BathyImagerService; print('Configuration test passed')"; then
         print_warning "Configuration test failed - check hardware connections"
     fi
     
@@ -587,7 +587,7 @@ main() {
     setup_directories
     setup_python_environment
     install_python_dependencies
-    install_bathycat
+    install_bathyimager
     install_configuration
     create_systemd_service
     setup_log_rotation

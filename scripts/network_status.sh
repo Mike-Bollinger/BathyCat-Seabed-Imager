@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# BathyCat Network Status Script
+# BathyImager Network Status Script
 # Shows current network configuration and connectivity status
 # Usage: ./network_status.sh
 
@@ -236,7 +236,7 @@ show_summary() {
 # Main function
 main() {
     clear
-    echo -e "${BOLD}${BLUE}BathyCat Network Status Report${NC}"
+    echo -e "${BOLD}${BLUE}BathyImager Network Status Report${NC}"
     echo -e "${BLUE}Generated: $(date)${NC}"
     echo ""
     

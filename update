@@ -3,7 +3,7 @@
 # BathyCat Seabed Imager - Quick Update Script
 # ============================================
 # 
-# Simple script to update the BathyCat system from GitHub.
+# Simple script to update the BathyImager system from GitHub.
 #
 # Usage: 
 #   ./update           - Interactive update with conflict resolution
@@ -30,7 +30,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --help|-h)
-            echo "BathyCat Update Script"
+            echo "BathyImager Update Script"
             echo ""
             echo "Usage:"
             echo "  ./update           - Interactive update"
@@ -48,12 +48,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-echo "🚀 BathyCat Seabed Imager - Quick Update"
+echo "🚀 BathyImager Seabed Imager - Quick Update"
 echo "========================================"
 
 # Check if we're in the right directory
 if [ ! -f "src/bathycat_imager.py" ]; then
-    echo "❌ Error: Not in BathyCat project directory"
+    echo "❌ Error: Not in BathyImager project directory"
     echo "   Please run this script from the project root"
     echo "   Current directory: $(pwd)"
     echo "   Looking for: src/bathycat_imager.py"
@@ -67,8 +67,8 @@ sudo systemctl stop bathyimager 2>/dev/null && echo "   Service stopped" || echo
 
 # Backup configuration
 echo "💾 Backing up configuration..."
-if [ -f "config/bathycat_config.json" ]; then
-    cp config/bathycat_config.json config/bathycat_config.json.backup
+if [ -f "config/bathyimager_config.json" ]; then
+    cp config/bathyimager_config.json config/bathyimager_config.json.backup
     echo "   Configuration backed up"
 else
     echo "   No configuration found"
@@ -182,8 +182,8 @@ fi
 
 # Restore configuration
 echo "🔧 Restoring configuration..."
-if [ -f "config/bathycat_config.json.backup" ]; then
-    cp config/bathycat_config.json.backup config/bathycat_config.json
+if [ -f "config/bathyimager_config.json.backup" ]; then
+    cp config/bathyimager_config.json.backup config/bathyimager_config.json
     echo "   Configuration restored"
 fi
 
@@ -198,7 +198,7 @@ git log --oneline -1
 
 # Test the update
 echo "🧪 Testing update..."
-if python3 -c "import sys; sys.path.append('src'); from bathycat_imager import BathyCatImager; print('✅ Main app loads successfully')"; then
+if python3 -c "import sys; sys.path.append('src'); from bathycat_imager import BathyImager; print('✅ Main app loads successfully')"; then
     echo "   App test passed"
 else
     echo "❌ App test failed - check for errors"

@@ -33,9 +33,9 @@ class UpdateError(Exception):
     pass
 
 
-class BathyCatUpdater:
+class BathyImagerUpdater:
     """
-    Update manager for BathyCat system.
+    Update manager for BathyImager system.
     
     Handles safe updates from GitHub with rollback capability.
     """
@@ -51,13 +51,13 @@ class BathyCatUpdater:
         self.logger = self._setup_logging()
         
         # Update settings
-        self.github_repo = config.get('github_repo', 'Mike-Bollinger/BathyCat-Seabed-Imager')
+        self.github_repo = config.get('github_repo', 'Mike-Bollinger/BathyImager-Seabed-Imager')
         self.github_branch = config.get('github_branch', 'main')
-        self.install_dir = config.get('install_dir', '/opt/bathycat')
-        self.config_dir = config.get('config_dir', '/etc/bathycat')
-        self.backup_dir = config.get('backup_dir', '/opt/bathycat/backups')
+        self.install_dir = config.get('install_dir', '/opt/bathyimager')
+        self.config_dir = config.get('config_dir', '/etc/bathyimager')
+        self.backup_dir = config.get('backup_dir', '/opt/bathyimager/backups')
         self.service_name = config.get('service_name', 'bathyimager')
-        self.python_env = config.get('python_env', '/opt/bathycat/venv')
+        self.python_env = config.get('python_env', '/opt/bathyimager/venv')
         
         # Version information
         self.current_version = None
@@ -69,7 +69,7 @@ class BathyCatUpdater:
         
     def _setup_logging(self) -> logging.Logger:
         """Setup logging for updater."""
-        logger = logging.getLogger('bathycat_updater')
+        logger = logging.getLogger('bathyimager_updater')
         logger.setLevel(logging.INFO)
         
         # Console handler
@@ -283,7 +283,7 @@ class BathyCatUpdater:
         """
         try:
             # Create temporary directory
-            temp_dir = tempfile.mkdtemp(prefix='bathycat_update_')
+            temp_dir = tempfile.mkdtemp(prefix='bathyimager_update_')
             
             self.logger.info(f"Downloading update to {temp_dir}")
             
@@ -301,7 +301,7 @@ class BathyCatUpdater:
                 raise UpdateError(f"Git clone failed: {result.stderr}")
             
             # Verify download
-            src_dir = os.path.join(temp_dir, 'src', 'bathycat')
+            src_dir = os.path.join(temp_dir, 'src')
             if not os.path.exists(src_dir):
                 raise UpdateError("Downloaded update does not contain expected source code")
             
@@ -315,7 +315,7 @@ class BathyCatUpdater:
     
     def stop_service(self) -> bool:
         """
-        Stop BathyCat imaging service.
+        Stop BathyImager imaging service.
         
         Returns:
             bool: True if stopped successfully, False otherwise
@@ -342,7 +342,7 @@ class BathyCatUpdater:
     
     def start_service(self) -> bool:
         """
-        Start BathyCat imaging service.
+        Start BathyImager imaging service.
         
         Returns:
             bool: True if started successfully, False otherwise
@@ -582,13 +582,13 @@ class BathyCatUpdater:
 def load_config(config_path: str = None) -> Dict[str, Any]:
     """Load updater configuration."""
     default_config = {
-        'github_repo': 'Mike-Bollinger/BathyCat-Seabed-Imager',
+        'github_repo': 'Mike-Bollinger/BathyImager-Seabed-Imager',
         'github_branch': 'main',
-        'install_dir': '/opt/bathycat',
-        'config_dir': '/etc/bathycat',
-        'backup_dir': '/opt/bathycat/backups',
+        'install_dir': '/opt/bathyimager',
+        'config_dir': '/etc/bathyimager',
+        'backup_dir': '/opt/bathyimager/backups',
         'service_name': 'bathyimager',
-        'python_env': '/opt/bathycat/venv'
+        'python_env': '/opt/bathyimager/venv'
     }
     
     if config_path and os.path.exists(config_path):
@@ -604,7 +604,7 @@ def load_config(config_path: str = None) -> Dict[str, Any]:
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description='BathyCat Update System')
+    parser = argparse.ArgumentParser(description='BathyImager Update System')
     parser.add_argument('--config', '-c', help='Configuration file path')
     parser.add_argument('--force', '-f', action='store_true', help='Force update')
     parser.add_argument('--check', action='store_true', help='Check for updates only')
@@ -614,7 +614,7 @@ def main():
     
     try:
         config = load_config(args.config)
-        updater = BathyCatUpdater(config)
+        updater = BathyImagerUpdater(config)
         
         if args.version:
             current = updater.get_current_version()
