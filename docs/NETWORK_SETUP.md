@@ -11,50 +11,298 @@ The BathyImager system supports simultaneous Ethernet and WiFi connections with 
 - **Automatic Routing**: Traffic prefers Ethernet when available, falls back to WiFi
 - **Seamless Failover**: Maintains connectivity if one interface fails
 
-## ⚠️ No Internet on Pi? - Internet Sharing Solution
+## ⚠️ No Internet on Pi? - Ethernet Internet Sharing Solution
 
-If your Raspberry Pi can't get online to download packages, use this method to share internet through Ethernet:
+If your Raspberry Pi can't get online to download packages, use this method to share internet through Ethernet cable connection.
 
-### Windows Computer → Pi Internet Sharing
+### Method 1: Windows Internet Connection Sharing (ICS)
 
-**Step 1: On your Windows computer**
-```cmd
-# Enable Internet Connection Sharing
-# 1. Go to: Control Panel → Network and Internet → Network Connections
-# 2. Right-click your WiFi/Internet adapter → Properties
-# 3. Go to Sharing tab → Check "Allow other network users to connect"
-# 4. Select the Ethernet adapter connected to Pi
+**Step 1: Enable Internet Connection Sharing on Windows**
 
-# OR use PowerShell to set static IP:
+1. **Open Network Connections:**
+   - Press `Win + R`, type `ncpa.cpl`, press Enter
+   - OR: Control Panel → Network and Internet → Network Connections
+
+2. **Configure Internet Connection Sharing:**
+   - Right-click your **WiFi/Internet adapter** (the one with internet)
+   - Select **Properties**
+   - Go to **Sharing** tab
+   - Check "**Allow other network users to connect through this computer's Internet connection**"
+   - In the dropdown, select your **Ethernet adapter** (connected to Pi)
+   - Click **OK**
+
+3. **Verify Ethernet Adapter Settings:**
+   - Your Ethernet adapter should automatically get IP: `192.168.137.1`
+   - If not, set it manually:
+
+**Step 2: Manual IP Configuration (if needed)**
+
+Open PowerShell as Administrator and run:
+```powershell
+# Set static IP on Ethernet adapter connected to Pi
 netsh interface ip set address "Ethernet" static 192.168.137.1 255.255.255.0
+
+# Verify the configuration
+netsh interface ip show config "Ethernet"
 ```
 
-**Step 2: On Raspberry Pi**
+**Step 3: Configure Raspberry Pi**
+
+Connect to your Pi via SSH (using the shared connection) or with keyboard/monitor:
+
 ```bash
-# Option A: Use the automated script (recommended)
-cd /opt/bathyimager
+# Method A: Use the automated script (recommended)
+cd ~/BathyCat-Seabed-Imager
 sudo chmod +x scripts/setup_shared_internet.sh
 sudo ./scripts/setup_shared_internet.sh
 
-# Option B: Manual setup
+# Method B: Manual configuration
+# Configure Pi to use Windows computer as gateway
 sudo ip addr add 192.168.137.100/24 dev eth0
 sudo ip route add default via 192.168.137.1 dev eth0
+
+# Set DNS servers
 echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+echo "nameserver 1.1.1.1" | sudo tee -a /etc/resolv.conf
 
 # Test connectivity
 ping -c 3 google.com
+```
 
-# If successful, install packages
+**Step 4: Install Required Packages**
+
+Once internet is working:
+```bash
+# Update package lists
 sudo apt update
+
+# Install network packages
 sudo apt install -y dhcpcd5 wpasupplicant wireless-tools net-tools iproute2 dnsutils
 
-# Enable services  
+# Install any missing packages for BathyImager
+sudo apt install -y libopenblas-dev i2c-tools
+
+# Enable network services
 sudo systemctl enable dhcpcd
 sudo systemctl enable wpa_supplicant@wlan0
-
-# Now proceed with normal network setup
-sudo ./scripts/network_setup.sh
 ```
+
+**Step 5: Configure Permanent Network Setup**
+
+```bash
+# Now run the full network setup
+sudo ./scripts/network_setup.sh
+
+# Configure WiFi for future use
+sudo ./scripts/wifi_config.sh
+```
+
+### Method 2: Windows Command Line Setup
+
+**Alternative PowerShell method for advanced users:**
+
+```powershell
+# Enable Internet Connection Sharing via PowerShell
+# Note: Replace "Wi-Fi" with your internet adapter name
+# Replace "Ethernet" with your Ethernet adapter name
+
+# Get adapter names
+Get-NetAdapter | Select-Object Name, InterfaceDescription
+
+# Enable ICS (requires manual setup via GUI for most reliable results)
+# But you can set the IP manually:
+New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress 192.168.137.1 -PrefixLength 24
+
+# Enable IP forwarding
+Set-NetIPInterface -InterfaceAlias "Ethernet" -Forwarding Enabled
+```
+
+### Method 3: Linux/macOS Internet Sharing
+
+**For Linux systems:**
+```bash
+# Enable IP forwarding
+echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward
+
+# Configure Ethernet interface  
+sudo ip addr add 192.168.137.1/24 dev eth0
+sudo ip link set eth0 up
+
+# Set up NAT (replace wlan0 with your internet interface)
+sudo iptables -t nat -A POSTROUTING -o wlan0 -j MASQUERADE
+sudo iptables -A FORWARD -i eth0 -o wlan0 -j ACCEPT
+sudo iptables -A FORWARD -i wlan0 -o eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+# Start DHCP server (optional)
+sudo dnsmasq --interface=eth0 --dhcp-range=192.168.137.100,192.168.137.200,12h
+```
+
+**For macOS:**
+```bash
+# System Preferences → Sharing → Internet Sharing
+# Select Wi-Fi as source, Ethernet as destination
+# Or use command line:
+sudo sysctl -w net.inet.ip.forwarding=1
+sudo pfctl -e -f /etc/pf.conf
+```
+
+### Troubleshooting Internet Sharing
+
+#### Windows Issues
+
+**Issue: "Internet Connection Sharing is already enabled"**
+```cmd
+# Disable and re-enable ICS
+# Go to Network Connections → Right-click WiFi adapter → Properties
+# → Sharing tab → Uncheck sharing → Apply → Check again → Apply
+```
+
+**Issue: Wrong IP address on Ethernet adapter**
+```powershell
+# Remove existing IP and set correct one
+netsh interface ip delete address "Ethernet" addr=192.168.137.1
+netsh interface ip set address "Ethernet" static 192.168.137.1 255.255.255.0
+```
+
+**Issue: Pi can't reach internet**
+```bash
+# On Pi, check routing
+ip route list
+
+# Should see: default via 192.168.137.1 dev eth0
+# If not, add it:
+sudo ip route add default via 192.168.137.1 dev eth0
+
+# Check if you can reach the gateway
+ping 192.168.137.1
+
+# Check DNS
+nslookup google.com
+```
+
+#### Pi-side Issues
+
+**Issue: Can't get IP address**
+```bash
+# Check Ethernet link
+ip link show eth0
+
+# Manually configure if DHCP fails
+sudo ip addr add 192.168.137.100/24 dev eth0
+sudo ip link set eth0 up
+```
+
+**Issue: DNS not working**
+```bash
+# Check DNS configuration
+cat /etc/resolv.conf
+
+# Manually set DNS if needed
+echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+echo "nameserver 192.168.137.1" | sudo tee -a /etc/resolv.conf
+```
+
+**Issue: Connection works but packages won't download**
+```bash
+# Check if apt can reach repositories
+sudo apt update
+
+# If it fails, try different mirrors or check proxy settings
+sudo nano /etc/apt/apt.conf.d/90curtin-aptproxy
+# Remove any proxy settings if present
+```
+
+### Network Sharing Verification
+
+**On Windows (verify sharing is working):**
+```cmd
+# Check network configuration
+ipconfig /all
+
+# Look for Ethernet adapter with IP 192.168.137.1
+# Check internet connection sharing is enabled
+
+# Test connectivity to Pi
+ping 192.168.137.100
+```
+
+**On Pi (verify internet access):**
+```bash
+# Check IP configuration
+ip addr show eth0
+
+# Should show: 192.168.137.100/24
+
+# Check routing
+ip route list
+
+# Should show: default via 192.168.137.1 dev eth0
+
+# Test connectivity
+ping -c 3 192.168.137.1  # Gateway (Windows PC)
+ping -c 3 8.8.8.8        # Internet
+ping -c 3 google.com     # DNS resolution
+```
+
+### Automated Recovery Script
+
+Create a recovery script for easy reconnection:
+
+```bash
+# Save as ~/reconnect_shared_internet.sh
+#!/bin/bash
+echo "Reconnecting to shared internet..."
+
+# Configure interface
+sudo ip addr flush dev eth0
+sudo ip addr add 192.168.137.100/24 dev eth0
+sudo ip link set eth0 up
+
+# Set default route
+sudo ip route del default 2>/dev/null
+sudo ip route add default via 192.168.137.1 dev eth0
+
+# Configure DNS
+echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+echo "nameserver 1.1.1.1" | sudo tee -a /etc/resolv.conf
+
+# Test connectivity
+if ping -c 1 google.com >/dev/null 2>&1; then
+    echo "✅ Internet connectivity restored!"
+else
+    echo "❌ Internet connectivity failed"
+fi
+
+# Make executable: chmod +x ~/reconnect_shared_internet.sh
+```
+
+### Performance Considerations
+
+**Network Speed:**
+- Ethernet sharing typically provides better performance than WiFi hotspots
+- Expected speeds: 100Mbps (Fast Ethernet) or 1Gbps (Gigabit Ethernet)
+- Actual speed limited by Windows computer's internet connection
+
+**Latency:**
+- Adds minimal latency (usually <1ms) compared to direct connection
+- Much better than WiFi hotspot solutions
+
+**Reliability:**
+- Very stable connection method
+- Less prone to interference than wireless solutions
+- Good for extended package downloads and system updates
+
+### When to Use Internet Sharing
+
+**Ideal Scenarios:**
+- Initial Pi setup without WiFi configured
+- Downloading large package updates
+- Installing development tools and dependencies
+- Systems in areas with poor WiFi coverage
+- Laboratory or workshop environments
+
+**After Setup:**
+Once your Pi has proper network configuration, you can disconnect the shared connection and use the configured Ethernet/WiFi setup for normal operation.
 
 ---
 

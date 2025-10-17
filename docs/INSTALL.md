@@ -38,6 +38,7 @@ This guide provides step-by-step instructions for installing the BathyCat Seabed
 
 3. **Run Installation Script**
    ```bash
+   chmod +x /scripts/install.sh
    sudo ./scripts/install.sh
    ```
 
@@ -51,16 +52,37 @@ This guide provides step-by-step instructions for installing the BathyCat Seabed
    - Configure log rotation
    - Run initial tests
 
-4. **Configuration**
+4. **Configure System**
    ```bash
-   # Create default configuration
-   cd /opt/bathycat/src && sudo python3 -m config --create-default
+   # Edit configuration file to match your hardware setup
+   nano config/bathyimager_config.json
+   ```
+
+   **Key settings to verify/adjust:**
+   - **Camera device**: Update `camera_device_id` if camera not on `/dev/video0`
+   - **GPS port**: Update `gps_port` if GPS not on `/dev/ttyUSB0`
+   - **Storage path**: Verify `storage_base_path` matches your USB mount point
+   - **Capture rate**: Adjust `capture_fps` for your survey needs
+   - **GPS requirements**: Set `require_gps_fix` based on your environment
+
+   **Quick hardware check:**
+   ```bash
+   # List cameras
+   ls /dev/video*
    
-   # Edit configuration if needed
-   sudo nano /etc/bathycat/config.json
+   # List GPS/serial devices
+   ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null || echo "No serial devices found"
    
-   # Validate configuration
-   cd /opt/bathycat/src && sudo python3 -m config --validate
+   # Check USB storage mount point
+   lsblk -o NAME,MOUNTPOINT | grep -E "(sd|usb)"
+   ```
+
+   **Test configuration:**
+   ```bash
+   # Validate config syntax
+   cd ~/BathyCat-Seabed-Imager
+   source venv/bin/activate
+   python -c "import json; json.load(open('config/bathyimager_config.json')); print('Configuration valid')"
    ```
 
 5. **Start Service**

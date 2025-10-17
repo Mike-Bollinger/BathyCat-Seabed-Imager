@@ -24,12 +24,12 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Installation configuration
-INSTALL_USER="pi"
-INSTALL_DIR="/opt/bathyimager"
-CONFIG_DIR="/etc/bathyimager"
+INSTALL_USER="bathyimager"
+PROJECT_DIR="/home/$INSTALL_USER/BathyCat-Seabed-Imager"
+CONFIG_DIR="$PROJECT_DIR/config"
 LOG_DIR="/var/log/bathyimager"
 SERVICE_NAME="bathyimager"
-PYTHON_ENV="$INSTALL_DIR/venv"
+PYTHON_ENV="$PROJECT_DIR/venv"
 
 # Flags
 DEV_MODE=false
@@ -230,26 +230,30 @@ install_system_dependencies() {
 setup_directories() {
     print_status "Setting up directories and user..."
     
-    # Create installation directory
-    mkdir -p "$INSTALL_DIR"
-    
-    # Create configuration directory
-    mkdir -p "$CONFIG_DIR"
-    
-    # Create log directory
-    mkdir -p "$LOG_DIR"
-    
-    # Create user if doesn't exist
+    # Create bathyimager user if doesn't exist
     if ! id "$INSTALL_USER" &>/dev/null; then
-        useradd -r -d "$INSTALL_DIR" -s /bin/bash "$INSTALL_USER"
+        useradd -m -d "/home/$INSTALL_USER" -s /bin/bash "$INSTALL_USER"
         print_status "Created user: $INSTALL_USER"
     fi
     
-    # Add user to necessary groups
-    usermod -a -G dialout,gpio,i2c,spi "$INSTALL_USER"
+    # Create log directory (only system directory we need)
+    mkdir -p "$LOG_DIR"
     
-    # Set ownership
-    chown -R "$INSTALL_USER:$INSTALL_USER" "$INSTALL_DIR"
+    # Ensure the project is in the user's home directory
+    if [[ ! -d "$PROJECT_DIR" ]]; then
+        print_status "Copying project to user home directory..."
+        
+        # Copy current project to user home
+        sudo -u "$INSTALL_USER" cp -r "$(pwd)" "/home/$INSTALL_USER/"
+        
+        # Ensure correct ownership
+        chown -R "$INSTALL_USER:$INSTALL_USER" "$PROJECT_DIR"
+    fi
+    
+    # Add user to necessary groups
+    usermod -a -G dialout,gpio,i2c,spi,video "$INSTALL_USER"
+    
+    # Set ownership for log directory
     chown -R "$INSTALL_USER:$INSTALL_USER" "$LOG_DIR"
     
     print_success "Directories and user configured"
@@ -304,62 +308,61 @@ install_python_dependencies() {
 
 # Function to install BathyImager software
 install_bathyimager() {
-    print_status "Installing BathyImager software..."
+    print_status "Setting up BathyImager software..."
     
-    # Copy source code
-    if [[ "$DEV_MODE" == true ]]; then
-        # Development mode - create symlink
-        if [[ -d "$(pwd)/src" ]]; then
-            ln -sfn "$(pwd)/src" "$INSTALL_DIR/src"
-            chown -h "$INSTALL_USER:$INSTALL_USER" "$INSTALL_DIR/src"
-        else
-            print_error "Source directory not found. Run from BathyImager project root."
-            exit 1
-        fi
-    else
-        # Production mode - copy files
-        if [[ -d "src" ]]; then
-            cp -r src "$INSTALL_DIR/"
-            chown -R "$INSTALL_USER:$INSTALL_USER" "$INSTALL_DIR"
-        else
-            print_error "Source directory not found. Run from BathyImager project root."
-            exit 1
-        fi
+    # Ensure we're working from the correct directory
+    if [[ "$(pwd)" != *"BathyCat-Seabed-Imager"* ]]; then
+        print_error "Please run this script from the BathyCat-Seabed-Imager directory"
+        exit 1
+    fi
+    
+    # Make sure the project files are in the user's home directory
+    if [[ "$PROJECT_DIR" != "$(pwd)" ]]; then
+        print_status "Copying project files to user directory..."
+        sudo -u "$INSTALL_USER" mkdir -p "/home/$INSTALL_USER"
+        sudo -u "$INSTALL_USER" cp -r "$(pwd)" "/home/$INSTALL_USER/"
+        chown -R "$INSTALL_USER:$INSTALL_USER" "$PROJECT_DIR"
     fi
     
     # Make main script executable
-    chmod +x "$INSTALL_DIR/src/main.py"
+    chmod +x "$PROJECT_DIR/src/main.py"
     
-    print_success "BathyImager software installed"
+    # Create a simple run script
+    cat > "$PROJECT_DIR/run_bathyimager.sh" << EOF
+#!/bin/bash
+cd "$PROJECT_DIR/src"
+exec "$PYTHON_ENV/bin/python" main.py --config "$CONFIG_DIR/bathyimager_config.json" "\$@"
+EOF
+    
+    chmod +x "$PROJECT_DIR/run_bathyimager.sh"
+    chown "$INSTALL_USER:$INSTALL_USER" "$PROJECT_DIR/run_bathyimager.sh"
+    
+    print_success "BathyImager software configured"
 }
 
 # Function to install configuration
 install_configuration() {
-    print_status "Installing configuration..."
+    print_status "Setting up configuration..."
     
-    # Copy configuration file
+    # Use configuration file from project directory
     if [[ -f "config/bathyimager_config.json" ]]; then
-        cp "config/bathyimager_config.json" "$CONFIG_DIR/config.json"
+        # Configuration stays in project directory
+        print_status "Using configuration from project directory: $CONFIG_DIR/bathyimager_config.json"
         
-        # Update paths in config for production
-        if [[ "$DEV_MODE" == false ]]; then
-            sed -i 's|"/var/log/bathyimager/bathyimager.log"|"/var/log/bathyimager/bathyimager.log"|g' "$CONFIG_DIR/config.json"
-            sed -i 's|"/media/usb-storage/bathyimager"|"/media/usb-storage/bathyimager"|g' "$CONFIG_DIR/config.json"
-        fi
-        
-        chown "$INSTALL_USER:$INSTALL_USER" "$CONFIG_DIR/config.json"
-        chmod 644 "$CONFIG_DIR/config.json"
+        # Ensure proper ownership
+        chown "$INSTALL_USER:$INSTALL_USER" "$CONFIG_DIR/bathyimager_config.json"
+        chmod 644 "$CONFIG_DIR/bathyimager_config.json"
     else
         print_warning "Configuration file not found, creating default..."
         create_default_config
     fi
     
-    print_success "Configuration installed"
+    print_success "Configuration ready"
 }
 
 # Function to create default configuration
 create_default_config() {
-    cat > "$CONFIG_DIR/config.json" << EOF
+    cat > "$CONFIG_DIR/bathyimager_config.json" << EOF
 {
   "capture_fps": 4.0,
   "require_gps_fix": false,
@@ -410,7 +413,7 @@ create_default_config() {
   "status_report_interval": 30
 }
 EOF
-    chown "$INSTALL_USER:$INSTALL_USER" "$CONFIG_DIR/config.json"
+    chown "$INSTALL_USER:$INSTALL_USER" "$CONFIG_DIR/bathyimager_config.json"
 }
 
 # Function to create systemd service
@@ -423,26 +426,43 @@ Description=BathyImager Seabed Imager
 Documentation=https://github.com/Mike-Bollinger/BathyImager-Seabed-Imager
 After=network.target multi-user.target
 Wants=network.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
 User=$INSTALL_USER
 Group=$INSTALL_USER
-WorkingDirectory=$INSTALL_DIR
-Environment=PYTHONPATH=$INSTALL_DIR
-ExecStart=$PYTHON_ENV/bin/python -m main --config $CONFIG_DIR/config.json
-Restart=always
+WorkingDirectory=$PROJECT_DIR/src
+Environment=PYTHONPATH=$PROJECT_DIR/src
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/bin/sleep 10
+ExecStart=$PROJECT_DIR/run_bathyimager.sh
+ExecReload=/bin/kill -HUP \$MAINPID
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=on-failure
 RestartSec=10
-StandardOutput=journal
-StandardError=journal
+StandardOutput=syslog
+StandardError=syslog
 SyslogIdentifier=bathyimager
 
 # Security settings
-NoNewPrivileges=yes
-PrivateTmp=yes
+NoNewPrivileges=true
+ProtectHome=false
 ProtectSystem=strict
-ProtectHome=yes
-ReadWritePaths=$LOG_DIR /media
+ReadWritePaths=$PROJECT_DIR $LOG_DIR /media /mnt
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RemoveIPC=true
+
+# Hardware access
 DeviceAllow=/dev/video* rw
 DeviceAllow=/dev/ttyUSB* rw
 DeviceAllow=/dev/ttyACM* rw
@@ -456,6 +476,7 @@ WatchdogSec=60
 
 [Install]
 WantedBy=multi-user.target
+Alias=bathyimager-service.service
 EOF
     
     # Reload systemd
@@ -523,14 +544,14 @@ run_tests() {
     print_status "Running system tests..."
     
     # Test Python environment
-    if ! sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/python" -c "import sys; sys.path.append('$INSTALL_DIR/src'); import main; print('BathyImager import successful')"; then
+    if ! sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/python" -c "import sys; sys.path.append('$PROJECT_DIR/src'); import main; print('BathyImager import successful')"; then
         print_error "Python import test failed"
         return 1
     fi
     
-    # Test configuration
-    if ! sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/python" -c "import sys; sys.path.append('$INSTALL_DIR/src'); from main import BathyImagerService; print('Configuration test passed')"; then
-        print_warning "Configuration test failed - check hardware connections"
+    # Test run script
+    if ! sudo -u "$INSTALL_USER" "$PROJECT_DIR/run_bathyimager.sh" --help >/dev/null 2>&1; then
+        print_warning "Run script test failed - check hardware connections"
     fi
     
     print_success "System tests completed"
@@ -562,11 +583,29 @@ show_summary() {
     echo
     echo "Installation Summary:"
     echo "===================="
-    echo "Install Directory: $INSTALL_DIR"
-    echo "Configuration:     $CONFIG_DIR/config.json"
+    echo "Project Directory: $PROJECT_DIR"
+    echo "Configuration:     $CONFIG_DIR/bathyimager_config.json"
     echo "Log Directory:     $LOG_DIR"
     echo "Service Name:      $SERVICE_NAME"
     echo "Python Environment: $PYTHON_ENV"
+    echo "Run Script:        $PROJECT_DIR/run_bathyimager.sh"
+    echo
+    echo "Useful Commands:"
+    echo "==============="
+    echo "Check service status:    systemctl status $SERVICE_NAME"
+    echo "View logs:              journalctl -u $SERVICE_NAME -f"
+    echo "Restart service:        sudo systemctl restart $SERVICE_NAME"
+    echo "Stop service:           sudo systemctl stop $SERVICE_NAME"
+    echo "Edit configuration:     nano $CONFIG_DIR/bathyimager_config.json"
+    echo "Run manually:           sudo -u $INSTALL_USER $PROJECT_DIR/run_bathyimager.sh"
+    echo "Update code:            cd $PROJECT_DIR && git pull"
+    echo
+    echo "Development Commands:"
+    echo "===================="
+    echo "Switch to service user: sudo -u $INSTALL_USER -i"
+    echo "Project directory:      cd $PROJECT_DIR"
+    echo "Activate Python env:    source $PROJECT_DIR/venv/bin/activate"
+    echo "Run development mode:   cd $PROJECT_DIR/src && python main.py --config ../config/bathyimager_config.json"
     echo
     echo "Useful Commands:"
     echo "==============="

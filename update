@@ -57,6 +57,7 @@ if [ ! -f "src/bathycat_imager.py" ]; then
     echo "   Please run this script from the project root"
     echo "   Current directory: $(pwd)"
     echo "   Looking for: src/bathycat_imager.py"
+    echo "   Expected location: ~/BathyCat-Seabed-Imager"
     ls -la
     exit 1
 fi

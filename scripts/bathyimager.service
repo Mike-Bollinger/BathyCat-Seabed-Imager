@@ -8,13 +8,13 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-User=pi
-Group=pi
-WorkingDirectory=/opt/bathyimager/src
-Environment=PYTHONPATH=/opt/bathyimager/src
+User=bathyimager
+Group=bathyimager
+WorkingDirectory=/home/bathyimager/BathyCat-Seabed-Imager/src
+Environment=PYTHONPATH=/home/bathyimager/BathyCat-Seabed-Imager/src
 Environment=PYTHONUNBUFFERED=1
 ExecStartPre=/bin/sleep 10
-ExecStart=/opt/bathyimager/venv/bin/python -m main --config /etc/bathyimager/config.json
+ExecStart=/home/bathyimager/BathyCat-Seabed-Imager/run_bathyimager.sh
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=mixed
 KillSignal=SIGTERM
@@ -27,9 +27,9 @@ SyslogIdentifier=bathyimager
 
 # Security settings
 NoNewPrivileges=true
-ProtectHome=true
+ProtectHome=false
 ProtectSystem=strict
-ReadWritePaths=/opt/bathyimager /etc/bathyimager /var/log/bathyimager /media /mnt
+ReadWritePaths=/home/bathyimager/BathyCat-Seabed-Imager /var/log/bathyimager /media /mnt
 PrivateTmp=true
 ProtectKernelTunables=true
 ProtectKernelModules=true

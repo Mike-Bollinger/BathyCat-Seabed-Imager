@@ -53,11 +53,11 @@ class BathyImagerUpdater:
         # Update settings
         self.github_repo = config.get('github_repo', 'Mike-Bollinger/BathyImager-Seabed-Imager')
         self.github_branch = config.get('github_branch', 'main')
-        self.install_dir = config.get('install_dir', '/opt/bathyimager')
-        self.config_dir = config.get('config_dir', '/etc/bathyimager')
-        self.backup_dir = config.get('backup_dir', '/opt/bathyimager/backups')
+        self.install_dir = config.get('install_dir', '/home/bathyimager/BathyCat-Seabed-Imager')
+        self.config_dir = config.get('config_dir', '/home/bathyimager/BathyCat-Seabed-Imager/config')
+        self.backup_dir = config.get('backup_dir', '/home/bathyimager/BathyCat-Seabed-Imager/backups')
         self.service_name = config.get('service_name', 'bathyimager')
-        self.python_env = config.get('python_env', '/opt/bathyimager/venv')
+        self.python_env = config.get('python_env', '/home/bathyimager/BathyCat-Seabed-Imager/venv')
         
         # Version information
         self.current_version = None
@@ -584,11 +584,11 @@ def load_config(config_path: str = None) -> Dict[str, Any]:
     default_config = {
         'github_repo': 'Mike-Bollinger/BathyImager-Seabed-Imager',
         'github_branch': 'main',
-        'install_dir': '/opt/bathyimager',
-        'config_dir': '/etc/bathyimager',
-        'backup_dir': '/opt/bathyimager/backups',
+        'install_dir': '/home/bathyimager/BathyCat-Seabed-Imager',
+        'config_dir': '/home/bathyimager/BathyCat-Seabed-Imager/config',
+        'backup_dir': '/home/bathyimager/BathyCat-Seabed-Imager/backups',
         'service_name': 'bathyimager',
-        'python_env': '/opt/bathyimager/venv'
+        'python_env': '/home/bathyimager/BathyCat-Seabed-Imager/venv'
     }
     
     if config_path and os.path.exists(config_path):
