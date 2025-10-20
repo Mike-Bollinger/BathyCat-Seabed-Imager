@@ -27,6 +27,10 @@ import json
 
 # Import BathyCat modules
 from camera import Camera, CameraError
+# Import GPS with explicit local module to avoid conflict with system gps module
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
 from gps import GPS, GPSError, GPSFix
 from image_processor import ImageProcessor, ImageProcessingError
 from storage import StorageManager, StorageError
@@ -618,6 +622,7 @@ def main() -> int:
     parser.add_argument('--config', '-c', help='Configuration file path')
     parser.add_argument('--test', '-t', action='store_true', help='Run in test mode')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose logging')
+    parser.add_argument('--no-leds', action='store_true', help='Disable LED functionality for testing')
     
     args = parser.parse_args()
     
@@ -628,6 +633,10 @@ def main() -> int:
         # Adjust log level if verbose
         if args.verbose:
             config['log_level'] = 'DEBUG'
+            
+        # Disable LEDs if requested
+        if args.no_leds:
+            config['leds_enabled'] = False
         
         # Create and run service
         service = BathyCatService(config)

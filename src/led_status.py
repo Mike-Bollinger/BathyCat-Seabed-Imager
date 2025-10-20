@@ -22,28 +22,42 @@ from typing import Dict, Any, Optional
 from enum import Enum
 
 
-try:
-    import RPi.GPIO as GPIO
-    GPIO_AVAILABLE = True
-except ImportError:
-    GPIO_AVAILABLE = False
-    # Mock GPIO for testing on non-Pi systems
-    class MockGPIO:
-        BCM = 'BCM'
-        OUT = 'OUT'
-        HIGH = 1
-        LOW = 0
-        
-        @staticmethod
-        def setmode(mode): pass
-        @staticmethod
-        def setup(pin, mode): pass
-        @staticmethod
-        def output(pin, state): pass
-        @staticmethod
-        def cleanup(): pass
+# GPIO initialization - deferred to avoid import-time errors
+GPIO = None
+GPIO_AVAILABLE = False
+
+def _init_gpio():
+    """Initialize GPIO module with error handling."""
+    global GPIO, GPIO_AVAILABLE
     
-    GPIO = MockGPIO()
+    if GPIO is not None:
+        return GPIO_AVAILABLE
+        
+    try:
+        import RPi.GPIO as _GPIO
+        GPIO = _GPIO
+        GPIO_AVAILABLE = True
+    except (ImportError, RuntimeError, Exception) as e:
+        GPIO_AVAILABLE = False
+        # Mock GPIO for testing on non-Pi systems or when RPi.GPIO fails
+        class MockGPIO:
+            BCM = 'BCM'
+            OUT = 'OUT'
+            HIGH = 1
+            LOW = 0
+            
+            @staticmethod
+            def setmode(mode): pass
+            @staticmethod
+            def setup(pin, mode): pass
+            @staticmethod
+            def output(pin, state): pass
+            @staticmethod
+            def cleanup(): pass
+        
+        GPIO = MockGPIO()
+    
+    return GPIO_AVAILABLE
 
 
 class LEDState(Enum):
@@ -223,7 +237,15 @@ class LEDManager:
             bool: True if initialization successful, False otherwise
         """
         try:
-            if not GPIO_AVAILABLE:
+            # Check if LEDs are disabled in config
+            if self.config.get('leds_enabled', True) is False:
+                self.logger.info("LEDs disabled by configuration")
+                return True
+                
+            # Initialize GPIO with error handling
+            gpio_available = _init_gpio()
+            
+            if not gpio_available:
                 self.logger.warning("GPIO not available - LED functionality disabled")
                 return True  # Don't fail completely
             
