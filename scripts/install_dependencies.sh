@@ -46,47 +46,50 @@ else
     USING_VENV=false
 fi
 
-# Update pip first
-print_status "Updating pip..."
-if [ "$USING_VENV" = true ]; then
-    pip install --upgrade pip
-else
-    python3 -m pip install --upgrade pip --user
-fi
-
-# Install missing packages
-print_status "Installing missing Python packages..."
-
-packages=(
-    "pyserial"
-    "pynmea2" 
-    "Pillow"
-    "piexif"
-    "opencv-python"
-    "numpy"
-    "psutil"
+# Install system packages first (preferred method)
+print_status "Installing system packages via apt..."
+apt_packages=(
+    "python3-serial"      # pyserial
+    "python3-pil"         # Pillow
+    "python3-opencv"      # opencv-python
+    "python3-numpy"       # numpy  
+    "python3-psutil"      # psutil
+    "python3-rpi.gpio"    # RPi.GPIO
+    "python3-gpiozero"    # gpiozero
+    "python3-pip"         # pip
+    "python3-setuptools"  # setuptools
+    "python3-wheel"       # wheel
 )
 
-for package in "${packages[@]}"; do
+# Update package list
+sudo apt update
+
+for package in "${apt_packages[@]}"; do
     print_status "Installing $package..."
+    if sudo apt install -y "$package"; then
+        print_success "$package installed via apt"
+    else
+        print_warning "$package not available via apt"
+    fi
+done
+
+# Install packages not available via apt using pip with --break-system-packages
+print_status "Installing remaining packages via pip..."
+
+pip_packages=(
+    "pynmea2"
+    "piexif"
+)
+
+for package in "${pip_packages[@]}"; do
+    print_status "Installing $package via pip..."
     if [ "$USING_VENV" = true ]; then
         pip install "$package"
     else
-        python3 -m pip install "$package" --user --break-system-packages 2>/dev/null || \
-        python3 -m pip install "$package" --user
+        python3 -m pip install "$package" --break-system-packages
     fi
     print_success "$package installed"
 done
-
-# Try to install RPi.GPIO (may fail on non-Pi systems)
-print_status "Installing Raspberry Pi packages..."
-if [ "$USING_VENV" = true ]; then
-    pip install RPi.GPIO || pip install gpiozero
-else
-    python3 -m pip install RPi.GPIO --user --break-system-packages 2>/dev/null || \
-    python3 -m pip install gpiozero --user --break-system-packages 2>/dev/null || \
-    echo "GPIO packages installation failed (normal on non-Pi systems)"
-fi
 
 # Test imports
 print_status "Testing package imports..."

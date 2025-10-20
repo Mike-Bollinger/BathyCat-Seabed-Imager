@@ -14,7 +14,7 @@ WorkingDirectory=/home/bathyimager/BathyCat-Seabed-Imager/src
 Environment=PYTHONPATH=/home/bathyimager/BathyCat-Seabed-Imager/src
 Environment=PYTHONUNBUFFERED=1
 ExecStartPre=/bin/sleep 10
-ExecStart=/home/bathyimager/BathyCat-Seabed-Imager/run_bathyimager.sh
+ExecStart=/usr/bin/python3 /home/bathyimager/BathyCat-Seabed-Imager/src/main.py --config /home/bathyimager/BathyCat-Seabed-Imager/config/bathyimager_config.json
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=mixed
 KillSignal=SIGTERM
