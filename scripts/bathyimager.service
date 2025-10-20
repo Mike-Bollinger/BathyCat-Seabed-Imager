@@ -14,7 +14,7 @@ WorkingDirectory=/home/bathyimager/BathyCat-Seabed-Imager/src
 Environment=PYTHONPATH=/home/bathyimager/BathyCat-Seabed-Imager/src
 Environment=PYTHONUNBUFFERED=1
 ExecStartPre=/bin/sleep 10
-ExecStart=/usr/bin/python3 /home/bathyimager/BathyCat-Seabed-Imager/src/main.py --config /home/bathyimager/BathyCat-Seabed-Imager/config/bathyimager_config.json
+ExecStart=/home/bathyimager/BathyCat-Seabed-Imager/run_bathyimager.sh
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=mixed
 KillSignal=SIGTERM
@@ -29,7 +29,7 @@ SyslogIdentifier=bathyimager
 NoNewPrivileges=true
 ProtectHome=false
 ProtectSystem=strict
-ReadWritePaths=/home/bathyimager/BathyCat-Seabed-Imager /var/log/bathyimager /media /mnt
+ReadWritePaths=/home/bathyimager/BathyCat-Seabed-Imager /var/log/bathyimager /media /mnt /dev
 PrivateTmp=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
@@ -47,6 +47,24 @@ TasksMax=100
 # Capability restrictions
 CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN CAP_SETGID CAP_SETUID
 AmbientCapabilities=CAP_DAC_OVERRIDE CAP_FOWNER
+
+# Device access (for camera and GPS)
+DeviceAllow=/dev/video* rw
+DeviceAllow=/dev/ttyUSB* rw
+DeviceAllow=/dev/ttyACM* rw
+DeviceAllow=/dev/serial* rw
+DevicePolicy=closed
+
+# Network restrictions
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# System call filtering
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# File system restrictions
+ProtectProc=invisible
+ProcSubset=pid
 
 # Device access (for camera and GPS)
 DeviceAllow=/dev/video* rw

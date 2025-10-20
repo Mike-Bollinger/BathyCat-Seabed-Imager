@@ -26,11 +26,16 @@
   "enable_preview": false,
   "preview_width": 320,
   
-  "storage_base_path": "/media/usb-storage/bathyimager",
+  "storage_base_path": "/media/usb/bathyimager",
   "min_free_space_gb": 5.0,
   "auto_cleanup_enabled": true,
   "cleanup_threshold_gb": 10.0,
   "days_to_keep": 30,
+  
+  "led_power_pin": 18,
+  "led_gps_pin": 23,
+  "led_camera_pin": 24,
+  "led_error_pin": 25,
   
   "log_level": "INFO",
   "log_to_file": true,

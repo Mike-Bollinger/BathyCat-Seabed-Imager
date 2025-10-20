@@ -236,8 +236,32 @@ setup_directories() {
         print_status "Created user: $INSTALL_USER"
     fi
     
+    # Add user to necessary groups for hardware access
+    usermod -a -G dialout,gpio,i2c,spi,video,audio,input "$INSTALL_USER"
+    print_status "Added $INSTALL_USER to hardware access groups"
+    
     # Create log directory (only system directory we need)
     mkdir -p "$LOG_DIR"
+    
+    # Set up proper video device permissions
+    if [ -d /dev ]; then
+        # Ensure video devices are accessible
+        if ls /dev/video* >/dev/null 2>&1; then
+            chmod 666 /dev/video*
+            print_status "Set video device permissions"
+        fi
+        
+        # Ensure serial/USB devices are accessible  
+        if ls /dev/ttyUSB* >/dev/null 2>&1; then
+            chmod 666 /dev/ttyUSB*
+            print_status "Set USB serial device permissions"
+        fi
+        
+        if ls /dev/ttyACM* >/dev/null 2>&1; then
+            chmod 666 /dev/ttyACM*
+            print_status "Set ACM serial device permissions"
+        fi
+    fi
     
     # Ensure the project is in the user's home directory
     if [[ ! -d "$PROJECT_DIR" ]]; then
@@ -250,11 +274,13 @@ setup_directories() {
         chown -R "$INSTALL_USER:$INSTALL_USER" "$PROJECT_DIR"
     fi
     
-    # Add user to necessary groups
-    usermod -a -G dialout,gpio,i2c,spi,video "$INSTALL_USER"
-    
     # Set ownership for log directory
     chown -R "$INSTALL_USER:$INSTALL_USER" "$LOG_DIR"
+    
+    # Create media directory with proper permissions
+    mkdir -p /media/usb
+    chown "$INSTALL_USER:$INSTALL_USER" /media/usb
+    chmod 755 /media/usb
     
     print_success "Directories and user configured"
 }
@@ -391,7 +417,7 @@ create_default_config() {
   "enable_preview": false,
   "preview_width": 320,
   
-  "storage_base_path": "/media/usb-storage/bathyimager",
+  "storage_base_path": "/media/usb/bathyimager",
   "min_free_space_gb": 5.0,
   "auto_cleanup_enabled": true,
   "cleanup_threshold_gb": 10.0,
@@ -452,7 +478,7 @@ SyslogIdentifier=bathyimager
 NoNewPrivileges=true
 ProtectHome=false
 ProtectSystem=strict
-ReadWritePaths=$PROJECT_DIR $LOG_DIR /media /mnt
+ReadWritePaths=$PROJECT_DIR $LOG_DIR /media /mnt /dev
 PrivateTmp=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
@@ -462,10 +488,12 @@ RestrictSUIDSGID=true
 LockPersonality=true
 RemoveIPC=true
 
-# Hardware access
+# Hardware access for camera and GPS
 DeviceAllow=/dev/video* rw
 DeviceAllow=/dev/ttyUSB* rw
 DeviceAllow=/dev/ttyACM* rw
+DeviceAllow=/dev/serial* rw
+DevicePolicy=closed
 
 # Resource limits
 MemoryLimit=512M
@@ -512,12 +540,12 @@ setup_usb_automount() {
     print_status "Setting up USB storage auto-mount..."
     
     # Create mount point
-    mkdir -p /media/usb-storage
+    mkdir -p /media/usb
     
     # Add to fstab for auto-mount (optional)
-    if ! grep -q "usb-storage" /etc/fstab; then
+    if ! grep -q "usb.*bathyimager" /etc/fstab; then
         echo "# BathyImager USB Storage" >> /etc/fstab
-        echo "# LABEL=BATHYIMAGER /media/usb-storage auto defaults,user,noauto 0 0" >> /etc/fstab
+        echo "# LABEL=BATHYIMAGER /media/usb auto defaults,user,noauto 0 0" >> /etc/fstab
     fi
     
     # Create udev rule for auto-mount
@@ -525,12 +553,12 @@ setup_usb_automount() {
 # BathyImager USB Storage Auto-mount
 SUBSYSTEM=="block", ATTRS{idVendor}=="*", ATTRS{idProduct}=="*", \
 ACTION=="add", KERNEL=="sd[a-z][0-9]", \
-RUN+="/bin/mkdir -p /media/usb-storage", \
-RUN+="/bin/mount -o defaults,uid=$INSTALL_USER,gid=$INSTALL_USER %N /media/usb-storage"
+RUN+="/bin/mkdir -p /media/usb", \
+RUN+="/bin/mount -o defaults,uid=$INSTALL_USER,gid=$INSTALL_USER %N /media/usb"
 
 SUBSYSTEM=="block", ATTRS{idVendor}=="*", ATTRS{idProduct}=="*", \
 ACTION=="remove", KERNEL=="sd[a-z][0-9]", \
-RUN+="/bin/umount /media/usb-storage"
+RUN+="/bin/umount /media/usb"
 EOF
     
     # Reload udev rules
@@ -547,6 +575,53 @@ run_tests() {
     if ! sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/python" -c "import sys; sys.path.append('$PROJECT_DIR/src'); import main; print('BathyImager import successful')"; then
         print_error "Python import test failed"
         return 1
+    fi
+    
+    # Test camera access
+    print_status "Testing camera access..."
+    if ! sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/python" -c "
+import cv2
+try:
+    cap = cv2.VideoCapture(0)
+    if cap.isOpened():
+        ret, frame = cap.read()
+        cap.release()
+        if ret:
+            print('Camera test successful')
+        else:
+            print('Camera capture failed')
+            exit(1)
+    else:
+        print('Camera open failed')
+        exit(1)
+except Exception as e:
+    print(f'Camera test error: {e}')
+    exit(1)
+"; then
+        print_warning "Camera test failed - check camera connection and permissions"
+    else
+        print_success "Camera test passed"
+    fi
+    
+    # Test GPS device access
+    print_status "Testing GPS device access..."
+    if [ -e "/dev/ttyUSB0" ]; then
+        if sudo -u "$INSTALL_USER" timeout 5 python3 -c "
+import serial
+try:
+    ser = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)
+    ser.close()
+    print('GPS device accessible')
+except Exception as e:
+    print(f'GPS test error: {e}')
+    exit(1)
+" 2>/dev/null; then
+            print_success "GPS device test passed"
+        else
+            print_warning "GPS device test failed - check GPS connection"
+        fi
+    else
+        print_warning "GPS device /dev/ttyUSB0 not found"
     fi
     
     # Test run script
