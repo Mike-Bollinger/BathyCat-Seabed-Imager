@@ -25,44 +25,46 @@ StandardOutput=syslog
 StandardError=syslog
 SyslogIdentifier=bathyimager
 
-# Security settings
-NoNewPrivileges=true
+# Security settings (relaxed for hardware access)
+NoNewPrivileges=false
 ProtectHome=false
-ProtectSystem=strict
-ReadWritePaths=/home/bathyimager/BathyCat-Seabed-Imager /var/log/bathyimager /media /mnt /dev
-PrivateTmp=true
-ProtectKernelTunables=true
-ProtectKernelModules=true
-ProtectControlGroups=true
-RestrictRealtime=true
-RestrictSUIDSGID=true
-LockPersonality=true
-RemoveIPC=true
+ProtectSystem=false
+ReadWritePaths=/home/bathyimager/BathyCat-Seabed-Imager /var/log/bathyimager /media /mnt /dev /sys
+PrivateTmp=false
+ProtectKernelTunables=false
+ProtectKernelModules=false
+ProtectControlGroups=false
+RestrictRealtime=false
+RestrictSUIDSGID=false
+LockPersonality=false
+RemoveIPC=false
 
 # Resource limits
 MemoryHigh=512M
 MemoryMax=1G
 TasksMax=100
 
-# Capability restrictions
-CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN CAP_SETGID CAP_SETUID
-AmbientCapabilities=CAP_DAC_OVERRIDE CAP_FOWNER
+# Capability restrictions (allow hardware access)
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN CAP_SETGID CAP_SETUID CAP_SYS_RAWIO CAP_SYS_ADMIN
+AmbientCapabilities=CAP_DAC_OVERRIDE CAP_FOWNER CAP_SYS_RAWIO
 
-# Device access (for camera, GPS, and GPIO)
+# Device access (for camera, GPS, and GPIO) 
 DeviceAllow=/dev/video* rw
 DeviceAllow=/dev/ttyUSB* rw
 DeviceAllow=/dev/ttyACM* rw
 DeviceAllow=/dev/serial* rw
 DeviceAllow=/dev/gpiomem rw
 DeviceAllow=/dev/mem rw
-SupplementaryGroups=gpio video dialout i2c spi
-DevicePolicy=closed
+DeviceAllow=char-* rw
+DeviceAllow=block-* rw
+SupplementaryGroups=gpio video dialout i2c spi audio input
+DevicePolicy=auto
 
 # Network restrictions
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
-# System call filtering
-SystemCallFilter=@system-service
+# System call filtering (allow hardware access)
+SystemCallFilter=~@obsolete @keyring @module @mount @raw-io
 SystemCallErrorNumber=EPERM
 
 # File system restrictions

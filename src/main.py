@@ -196,8 +196,9 @@ class BathyCatService:
                 self.component_health['camera'] = True
                 self.logger.info("Camera system ready")
             else:
-                self.logger.error("Camera initialization failed")
-                return False
+                self.logger.warning("Camera initialization failed - will retry during operation")
+                self.component_health['camera'] = False
+                # Don't return False - continue with service startup
             
             # Initialize GPS system
             self.logger.info("Initializing GPS system")
@@ -340,10 +341,23 @@ class BathyCatService:
             if self.led_manager:
                 self.led_manager.set_camera_status(True, capturing=True)
             
-            # Capture frame from camera
+            # Capture frame from camera (with retry logic)
+            if not self.camera or not self.camera.is_initialized:
+                # Try to reconnect camera
+                self.logger.info("Attempting camera reconnection...")
+                if self.camera and self.camera.reconnect():
+                    self.component_health['camera'] = True
+                    self.logger.info("Camera reconnected successfully")
+                else:
+                    self.logger.debug("Camera not available - skipping capture")
+                    return False
+            
             frame = self.camera.capture_frame()
             if frame is None:
-                self.logger.warning("Failed to capture camera frame")
+                self.logger.warning("Failed to capture camera frame - will try reconnect next time")
+                self.component_health['camera'] = False
+                if self.camera:
+                    self.camera.is_initialized = False
                 return False
             
             # Get GPS fix
