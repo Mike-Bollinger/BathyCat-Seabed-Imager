@@ -271,6 +271,10 @@ class LEDManager:
             'error_condition': False,
             'capturing': False
         }
+        
+        # Capture rate configuration for adaptive LED behavior
+        self.capture_fps = config.get('capture_fps', 4.0)
+        self.high_rate_threshold = 2.0  # FPS threshold for switching LED patterns
     
     def initialize(self) -> bool:
         """
@@ -370,7 +374,7 @@ class LEDManager:
     
     def set_camera_status(self, active: bool, capturing: bool = False, error: bool = False) -> None:
         """
-        Set camera status indicator.
+        Set camera status indicator with adaptive patterns based on capture rate.
         
         Args:
             active: True if camera is active, False otherwise
@@ -384,10 +388,21 @@ class LEDManager:
             if error:
                 self.leds['camera'].set_state(LEDState.SOS)
             elif capturing:
-                # Signal capture with brief OFF blink
-                self.signal_capture()
+                # Use adaptive pattern based on capture rate
+                if self.capture_fps > self.high_rate_threshold:
+                    # High rate: Use fast blink pattern instead of individual flashes
+                    self.leds['camera'].set_state(LEDState.FAST_BLINK)
+                else:
+                    # Low rate: Individual OFF blinks
+                    self.signal_capture()
             elif active:
-                self.leds['camera'].set_state(LEDState.ON)  # ON when active and ready
+                # Camera active and ready
+                if self.capture_fps > self.high_rate_threshold:
+                    # High rate: LED ON (fast blink will show when capturing)
+                    self.leds['camera'].set_state(LEDState.ON)
+                else:
+                    # Low rate: LED ON (individual blinks will show when capturing)
+                    self.leds['camera'].set_state(LEDState.ON)
             else:
                 self.leds['camera'].set_state(LEDState.OFF)
     
@@ -411,20 +426,35 @@ class LEDManager:
                 self.leds['error'].set_state(LEDState.OFF)
     
     def signal_capture(self) -> None:
-        """Signal that an image capture occurred (brief flash)."""
+        """Signal that an image capture occurred (adaptive pattern based on capture rate)."""
         if 'camera' in self.leds:
-            # Briefly flash camera LED
-            threading.Thread(target=self._capture_flash, daemon=True).start()
+            if self.capture_fps <= self.high_rate_threshold:
+                # Low rate: Individual OFF blinks
+                threading.Thread(target=self._capture_flash, daemon=True).start()
+            # High rate: Fast blink pattern is already set in set_camera_status()
     
     def _capture_flash(self) -> None:
-        """Brief OFF blink to indicate image capture while camera LED is normally ON."""
+        """Adaptive OFF blink to indicate image capture - duration based on capture rate."""
         try:
             if 'camera' in self.leds:
                 original_state = self.leds['camera'].state
-                # Brief OFF blink to signal capture (camera is normally ON when active)
+                
+                # Determine OFF blink duration based on capture rate
+                if self.capture_fps <= self.high_rate_threshold:
+                    # Low rate (≤2 FPS): Longer 250ms OFF blink for clear visibility
+                    off_duration = 0.25  # 250ms
+                    self.logger.debug(f"Low rate capture flash: {off_duration*1000}ms OFF blink at {self.capture_fps} FPS")
+                else:
+                    # This shouldn't be called for high rates (they use FAST_BLINK pattern)
+                    # But include fallback just in case
+                    off_duration = 0.05  # 50ms
+                    self.logger.debug(f"Fallback capture flash: {off_duration*1000}ms OFF blink at {self.capture_fps} FPS")
+                
+                # Execute OFF blink
                 self.leds['camera'].set_state(LEDState.OFF)
-                time.sleep(0.15)  # 150ms OFF blink
+                time.sleep(off_duration)
                 self.leds['camera'].set_state(original_state)
+                
         except Exception as e:
             self.logger.debug(f"Capture flash error: {e}")
     
