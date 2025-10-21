@@ -423,7 +423,7 @@ class LEDManager:
                 original_state = self.leds['camera'].state
                 # Brief OFF blink to signal capture (camera is normally ON when active)
                 self.leds['camera'].set_state(LEDState.OFF)
-                time.sleep(0.05)  # 50ms OFF blink
+                time.sleep(0.15)  # 150ms OFF blink
                 self.leds['camera'].set_state(original_state)
         except Exception as e:
             self.logger.debug(f"Capture flash error: {e}")
