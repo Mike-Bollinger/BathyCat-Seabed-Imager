@@ -86,9 +86,7 @@ NEW_COMMITS=$(git log --oneline HEAD..origin/main | wc -l)
 
 if [ "$NEW_COMMITS" -eq 0 ]; then
     echo "✅ Already up to date!"
-    
-    # Restore service if it was running
-    sudo systemctl start bathyimager 2>/dev/null && echo "   Service restarted" || true
+    echo "   To start services: sudo systemctl start bathyimager"
     exit 0
 fi
 
@@ -154,12 +152,12 @@ if [ -n "$LOCAL_CHANGES" ]; then
                 ;;
             3)
                 echo "🛑 Update cancelled"
-                sudo systemctl start bathyimager 2>/dev/null || true
+                echo "   To restart services: sudo systemctl start bathyimager"
                 exit 0
                 ;;
             *)
                 echo "❌ Invalid choice - cancelling update"
-                sudo systemctl start bathyimager 2>/dev/null || true
+                echo "   To restart services: sudo systemctl start bathyimager"
                 exit 1
                 ;;
         esac
@@ -231,14 +229,20 @@ else
     fi
 fi
 
-# Restart service
-echo "🚀 Starting services..."
-sudo systemctl start bathyimager 2>/dev/null && echo "   Service started" || echo "   Manual start required"
-
 echo ""
 echo "✨ Update complete!"
-echo "   You can now run:"
+echo ""
+echo "🔧 Service Management:"
+echo "   To install/update service: sudo ./scripts/install.sh --update"
+echo "   To start service:          sudo systemctl start bathyimager"
+echo "   To enable auto-start:      sudo systemctl enable bathyimager"
+echo "   To check status:           sudo systemctl status bathyimager"
+echo "   To view logs:              sudo journalctl -u bathyimager -f"
+echo ""
+echo "🏃 Manual Running:"
 echo "   • python3 src/main.py --config config/bathyimager_config.json"
 echo "   • ./run_bathyimager.sh"
 echo ""
-echo "   To check status: sudo systemctl status bathyimager"
+echo "🔍 Hardware Diagnostics:"
+echo "   • ./scripts/hardware_diagnostics.sh permissions"
+echo "   • ./scripts/hardware_diagnostics.sh all"
