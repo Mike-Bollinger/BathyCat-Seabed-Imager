@@ -337,10 +337,6 @@ class BathyCatService:
             bool: True if capture successful, False otherwise
         """
         try:
-            # Update LED status for capture
-            if self.led_manager:
-                self.led_manager.set_camera_status(True, capturing=True)
-            
             # Capture frame from camera (with retry logic)
             if not self.camera or not self.camera.is_initialized:
                 # Try to reconnect camera

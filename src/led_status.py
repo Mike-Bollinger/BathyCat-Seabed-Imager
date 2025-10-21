@@ -384,10 +384,10 @@ class LEDManager:
             if error:
                 self.leds['camera'].set_state(LEDState.SOS)
             elif capturing:
-                # Brief flash handled by signal_capture method
-                self.leds['camera'].set_state(LEDState.ON)
+                # Signal capture with brief flash instead of solid LED
+                self.signal_capture()
             elif active:
-                self.leds['camera'].set_state(LEDState.ON)
+                self.leds['camera'].set_state(LEDState.OFF)  # OFF when active but not capturing
             else:
                 self.leds['camera'].set_state(LEDState.OFF)
     
