@@ -113,10 +113,6 @@ class ImageProcessor:
             Image.Image: Image with metadata (original image if metadata fails)
         """
         try:
-            # Skip metadata if GPS is required but not available
-            if not gps_fix or not gps_fix.is_valid:
-                self.logger.debug("No valid GPS fix - skipping GPS metadata, adding timestamp only")
-            
             # Get existing EXIF data or create new
             exif_data = image.info.get('exif', b'')
             
@@ -134,13 +130,23 @@ class ImageProcessor:
             # Add timestamp (always add this)
             self._add_timestamp_metadata(exif_dict, timestamp)
             
-            # Add GPS data only if available and valid
-            if gps_fix and gps_fix.is_valid:
-                try:
-                    self._add_gps_metadata(exif_dict, gps_fix)
-                    self.logger.debug("Added GPS metadata to image")
-                except Exception as e:
-                    self.logger.warning(f"Failed to add GPS metadata: {e}")
+            # Add GPS data if available - be more permissive and informative
+            gps_added = False
+            if gps_fix:
+                # Check if we have basic coordinate data, even if not "valid" by strict standards
+                if (gps_fix.latitude != 0 and gps_fix.longitude != 0 and
+                    -90 <= gps_fix.latitude <= 90 and -180 <= gps_fix.longitude <= 180):
+                    try:
+                        self._add_gps_metadata(exif_dict, gps_fix)
+                        valid_status = "VALID" if gps_fix.is_valid else "PARTIAL"
+                        self.logger.info(f"GPS metadata added ({valid_status}): {gps_fix.latitude:.6f}, {gps_fix.longitude:.6f} - Quality:{gps_fix.fix_quality}, Sats:{gps_fix.satellites}")
+                        gps_added = True
+                    except Exception as e:
+                        self.logger.warning(f"Failed to add GPS metadata: {e}")
+                else:
+                    self.logger.warning(f"GPS coordinates invalid or zero - quality:{gps_fix.fix_quality}, sats:{gps_fix.satellites}, coords:({gps_fix.latitude:.6f},{gps_fix.longitude:.6f})")
+            else:
+                self.logger.info("No GPS fix available - image will not have GPS coordinates")
             
             # Add camera/software information
             self._add_software_metadata(exif_dict)

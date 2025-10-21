@@ -692,6 +692,124 @@ except Exception as e:
 "
 ```
 
+#### GPS Time Synchronization Issues
+
+```bash
+# Check for GPS time sync error in logs
+sudo journalctl -u bathyimager | grep "Failed to set system time"
+
+# Common error: "Operation not permitted" when setting date
+# This indicates sudo privileges are missing for GPS time sync
+
+# Check if GPS time sync sudoers file exists
+ls -la /etc/sudoers.d/bathyimager-gps-sync
+
+# Test GPS time sync permissions manually
+sudo -u bathyimager sudo -n date
+
+# Fix GPS time sync permissions
+sudo ./scripts/setup_device_permissions.sh
+
+# Verify permissions are working
+./scripts/hardware_diagnostics.sh permissions
+
+# Check GPS time sync status in logs
+sudo journalctl -u bathyimager | grep -E "(GPS time|time sync)"
+
+# Expected behavior after fix:
+# - GPS RMC sentences provide accurate time
+# - System time automatically synced when GPS fix acquired
+# - Images timestamped with GPS-accurate UTC time
+# - Status shows 'system_time_synced: true' when GPS synced
+```
+
+#### GPS Metadata Not in Images
+
+```bash
+# This troubleshooting section helps diagnose why GPS coordinates 
+# might not be appearing in image EXIF metadata
+
+# 1. Run comprehensive GPS tagging diagnostic
+./scripts/gps_diagnostic.py
+
+# 2. Check GPS fix quality in logs
+sudo journalctl -u bathyimager | grep -E "(GPS fix|GPS metadata|coordinates)"
+
+# 3. Manually verify GPS data reception
+sudo cat /dev/ttyUSB0 | grep -E "GPGGA|GPRMC"
+# Look for valid coordinates in NMEA sentences
+
+# 4. Test image metadata extraction on existing images
+python3 -c "
+from PIL import Image
+import piexif
+filepath = '/media/usb/bathyimager/YYYY/MM/DD/bathyimager_YYYYMMDD_HHMMSS.jpg'
+with Image.open(filepath) as img:
+    exif = piexif.load(img.info.get('exif', b''))
+    gps_info = exif.get('GPS', {})
+    if gps_info:
+        print('GPS EXIF found:', gps_info)
+    else:
+        print('No GPS EXIF data found')
+"
+
+# 5. Check configuration enables metadata
+grep -E "(enable_metadata|require_gps_fix)" config/bathyimager_config.json
+
+# 6. Common causes and solutions:
+#    - GPS never gets valid fix (< 3 satellites)
+#      Solution: Test outdoors with clear sky view
+#    - GPS coordinates are 0,0 
+#      Solution: Wait longer for GPS acquisition
+#    - Metadata disabled in config
+#      Solution: Set "enable_metadata": true
+#    - GPS fix too strict
+#      Solution: Set "require_gps_fix": false
+#    - EXIF library errors
+#      Solution: Check logs for piexif errors
+
+# 7. Enable more verbose GPS logging temporarily
+sudo systemctl stop bathyimager
+sudo -u bathyimager LOG_LEVEL=DEBUG ./run_bathyimager.sh
+# Watch for GPS fix messages and metadata addition logs
+```
+
+#### Camera Auto-Settings Not Working
+
+```bash
+# Verify camera auto white balance and exposure are enabled
+
+# 1. Check configuration
+grep -E "(auto_exposure|auto_white_balance)" config/bathyimager_config.json
+# Should show: "camera_auto_exposure": true, "camera_auto_white_balance": true
+
+# 2. Check logs for camera initialization messages
+sudo journalctl -u bathyimager | grep -E "(Camera auto|Actual camera properties)"
+
+# 3. Test camera manually to verify auto settings
+python3 -c "
+import cv2
+cap = cv2.VideoCapture(0)
+print('Auto exposure:', cap.get(cv2.CAP_PROP_AUTO_EXPOSURE))
+print('Auto WB:', cap.get(cv2.CAP_PROP_AUTO_WB))
+cap.release()
+"
+
+# 4. Common issues:
+#    - USB camera doesn't support auto settings
+#      Solution: Check with v4l2-ctl for supported controls
+#    - OpenCV version doesn't support properties
+#      Solution: Update OpenCV or use manual settings
+#    - Camera defaults overriding settings
+#      Solution: Power cycle camera or adjust timing
+
+# 5. Verify with v4l2-ctl (if available)
+sudo apt install v4l-utils
+v4l2-ctl --list-ctrls --device /dev/video0
+v4l2-ctl --get-ctrl white_balance_automatic --device /dev/video0
+v4l2-ctl --get-ctrl auto_exposure --device /dev/video0
+```
+
 #### Storage Issues
 
 ```bash

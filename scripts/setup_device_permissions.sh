@@ -52,6 +52,29 @@ if [ -e /dev/mem ]; then
     log "Memory device permissions set"
 fi
 
+# Setup sudo privileges for GPS time synchronization
+log "Setting up sudo privileges for GPS time synchronization..."
+SUDOERS_FILE="/etc/sudoers.d/bathyimager-gps-sync"
+
+# Create sudoers entry for date command (GPS time sync)
+cat > "$SUDOERS_FILE" << 'EOF'
+# Allow bathyimager user to set system date for GPS time synchronization
+# This is required for accurate GPS-synchronized timestamps on images
+bathyimager ALL=(root) NOPASSWD: /usr/bin/date
+EOF
+
+# Set proper permissions on sudoers file
+chmod 440 "$SUDOERS_FILE"
+chown root:root "$SUDOERS_FILE"
+
+# Verify sudoers syntax
+if visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
+    log "GPS time sync sudo privileges configured successfully"
+else
+    log "ERROR: Invalid sudoers configuration, removing file"
+    rm -f "$SUDOERS_FILE"
+fi
+
 # Verify user group membership
 log "Verifying user 'bathyimager' group membership..."
 groups bathyimager | grep -q video && log "User is in video group" || log "WARNING: User not in video group"

@@ -116,16 +116,20 @@ class Camera:
         # Configure exposure
         if self.auto_exposure:
             self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)  # Enable auto exposure
+            self.logger.info("Camera auto-exposure ENABLED")
         else:
             self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # Manual exposure
             self.cap.set(cv2.CAP_PROP_EXPOSURE, self.exposure)
+            self.logger.info(f"Camera manual exposure set to {self.exposure}")
         
         # Configure white balance
-        if not self.auto_white_balance:
+        if self.auto_white_balance:
+            self.cap.set(cv2.CAP_PROP_AUTO_WB, 1)  # Enable auto white balance
+            self.logger.info("Camera auto-white balance ENABLED")
+        else:
             self.cap.set(cv2.CAP_PROP_AUTO_WB, 0)  # Disable auto white balance
             self.cap.set(cv2.CAP_PROP_WB_TEMPERATURE, self.white_balance)
-        else:
-            self.cap.set(cv2.CAP_PROP_AUTO_WB, 1)  # Enable auto white balance
+            self.logger.info(f"Camera manual white balance set to {self.white_balance}K")
         
         # Set other properties if supported
         try:
@@ -147,9 +151,24 @@ class Camera:
             actual_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             actual_fps = int(self.cap.get(cv2.CAP_PROP_FPS))
             
-            self.logger.debug(f"Actual camera properties:")
-            self.logger.debug(f"  Resolution: {actual_width}x{actual_height}")
-            self.logger.debug(f"  FPS: {actual_fps}")
+            self.logger.info(f"Actual camera properties:")
+            self.logger.info(f"  Resolution: {actual_width}x{actual_height}")
+            self.logger.info(f"  FPS: {actual_fps}")
+            
+            # Log auto exposure and white balance status
+            try:
+                auto_exposure = self.cap.get(cv2.CAP_PROP_AUTO_EXPOSURE)
+                exposure_value = self.cap.get(cv2.CAP_PROP_EXPOSURE)
+                auto_wb = self.cap.get(cv2.CAP_PROP_AUTO_WB)
+                wb_temp = self.cap.get(cv2.CAP_PROP_WB_TEMPERATURE)
+                
+                self.logger.info(f"  Auto exposure: {auto_exposure} (0.25=manual, 0.75=auto)")
+                self.logger.info(f"  Exposure value: {exposure_value}")
+                self.logger.info(f"  Auto white balance: {auto_wb} (0=manual, 1=auto)")
+                self.logger.info(f"  White balance temp: {wb_temp}K")
+                
+            except Exception as e:
+                self.logger.debug(f"Could not read exposure/WB properties: {e}")
             
         except Exception as e:
             self.logger.debug(f"Could not read camera properties: {e}")

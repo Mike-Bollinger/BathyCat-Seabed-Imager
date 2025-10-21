@@ -260,14 +260,20 @@ class GPS:
                     fix_mode='3D' if gga.gps_qual in [1, 2] else 'NO_FIX'
                 )
                 
-                # Update current fix if valid or if we're not requiring fix
-                if fix.is_valid or not self.require_fix:
+                # Always store GPS data if we have coordinates, even if not strictly "valid"
+                # This allows for GPS tagging even with partial fixes
+                if lat != 0 or lon != 0:  # Have some coordinate data
                     self.current_fix = fix
                     self.last_fix_time = time.time()
                     self.fix_count += 1
                     
+                    # Log GPS status with more detail
                     if fix.is_valid:
-                        self.logger.debug(f"GPS fix: {lat:.6f}, {lon:.6f}, quality: {fix.fix_quality}, sats: {fix.satellites}")
+                        self.logger.debug(f"GPS fix VALID: {lat:.6f}, {lon:.6f}, quality:{fix.fix_quality}, sats:{fix.satellites}")
+                    else:
+                        self.logger.debug(f"GPS fix PARTIAL: {lat:.6f}, {lon:.6f}, quality:{fix.fix_quality}, sats:{fix.satellites} (will still geotag images)")
+                else:
+                    self.logger.debug(f"GPS fix with zero coordinates - quality:{fix.fix_quality}, sats:{fix.satellites or 0}")
                 
             except (ValueError, TypeError) as e:
                 self.logger.debug(f"Error processing GGA data: {e}")

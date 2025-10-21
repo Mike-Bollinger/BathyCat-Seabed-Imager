@@ -340,6 +340,22 @@ test_permissions() {
         print_warning "  GPIO device /dev/gpiomem not found"
     fi
     
+    # Check GPS time sync sudo privileges
+    print_status "Testing GPS time sync sudo privileges..."
+    if [ -f "/etc/sudoers.d/bathyimager-gps-sync" ]; then
+        # Test if user can run date command with sudo without password
+        if timeout 5 sudo -n date >/dev/null 2>&1; then
+            print_success "  ✓ GPS time sync sudo privileges OK"
+        else
+            print_error "  ✗ GPS time sync sudo privileges failed"
+            print_status "    Sudoers file exists but sudo test failed"
+        fi
+    else
+        print_error "  ✗ GPS time sync sudoers file missing"
+        print_status "    Expected: /etc/sudoers.d/bathyimager-gps-sync"
+        print_status "    Fix with: sudo ./scripts/setup_device_permissions.sh"
+    fi
+
     # Check systemd service status
     print_status "Checking BathyImager service..."
     if systemctl is-active --quiet bathyimager 2>/dev/null; then
