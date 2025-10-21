@@ -184,9 +184,15 @@ class BathyCatService:
             self.storage = StorageManager(self.config)
             if self.storage.initialize():
                 self.component_health['storage'] = True
-                self.logger.info("Storage system ready")
+                # Report where images will be saved
+                storage_info = self.storage.get_storage_info()
+                self.logger.info(f"Storage system ready - Images saving to: {storage_info['base_path']}")
+                self.logger.info(f"Storage space: {storage_info['free_space_gb']:.1f} GB free of {storage_info['total_space_gb']:.1f} GB total")
             else:
-                self.logger.error("Storage initialization failed")
+                self.logger.error(f"Storage initialization failed - Images will NOT be saved")
+                storage_info = self.storage.get_storage_info() if self.storage else None
+                if storage_info:
+                    self.logger.error(f"Failed storage path: {storage_info['base_path']}")
                 return False
             
             # Initialize camera system
@@ -521,8 +527,18 @@ class BathyCatService:
         if runtime and runtime > 0:
             capture_rate = self.status.images_captured / runtime
         
-        # Build status summary
-        summary = f"Running: {self.is_running}, Images: {self.status.images_captured}, Rate: {capture_rate:.2f}/s"
+        # Get storage status for summary
+        storage_status = "UNKNOWN"
+        if self.storage:
+            storage_info = self.storage.get_storage_info()
+            if storage_info['is_available']:
+                # Show storage location and free space
+                storage_status = f"OK ({storage_info['free_space_gb']:.1f}GB free)"
+            else:
+                storage_status = "UNAVAILABLE"
+        
+        # Build enhanced status summary with storage info
+        summary = f"Running: {self.is_running}, Images: {self.status.images_captured}, Rate: {capture_rate:.2f}/s, Storage: {storage_status}"
         
         return {
             'service': self.status.to_dict(),
