@@ -48,29 +48,14 @@ TasksMax=100
 CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN CAP_SETGID CAP_SETUID
 AmbientCapabilities=CAP_DAC_OVERRIDE CAP_FOWNER
 
-# Device access (for camera and GPS)
+# Device access (for camera, GPS, and GPIO)
 DeviceAllow=/dev/video* rw
 DeviceAllow=/dev/ttyUSB* rw
 DeviceAllow=/dev/ttyACM* rw
 DeviceAllow=/dev/serial* rw
-DevicePolicy=closed
-
-# Network restrictions
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-
-# System call filtering
-SystemCallFilter=@system-service
-SystemCallErrorNumber=EPERM
-
-# File system restrictions
-ProtectProc=invisible
-ProcSubset=pid
-
-# Device access (for camera and GPS)
-DeviceAllow=/dev/video* rw
-DeviceAllow=/dev/ttyUSB* rw
-DeviceAllow=/dev/ttyACM* rw
-DeviceAllow=/dev/serial* rw
+DeviceAllow=/dev/gpiomem rw
+DeviceAllow=/dev/mem rw
+SupplementaryGroups=gpio video dialout i2c spi
 DevicePolicy=closed
 
 # Network restrictions

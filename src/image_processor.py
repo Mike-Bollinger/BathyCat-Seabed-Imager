@@ -106,38 +106,62 @@ class ImageProcessor:
         
         Args:
             image: PIL Image object
-            gps_fix: GPS fix data
+            gps_fix: GPS fix data (can be None if GPS unavailable)
             timestamp: Image timestamp
             
         Returns:
-            Image.Image: Image with metadata
+            Image.Image: Image with metadata (original image if metadata fails)
         """
         try:
-            # Get existing EXIF data or create new
-            exif_dict = piexif.load(image.info.get('exif', b''))
+            # Skip metadata if GPS is required but not available
+            if not gps_fix or not gps_fix.is_valid:
+                self.logger.debug("No valid GPS fix - skipping GPS metadata, adding timestamp only")
             
-            # Add timestamp
+            # Get existing EXIF data or create new
+            exif_data = image.info.get('exif', b'')
+            
+            # Handle empty or invalid EXIF data
+            if not exif_data:
+                # Create fresh EXIF dictionary
+                exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "Interop": {}, "1st": {}, "thumbnail": None}
+            else:
+                try:
+                    exif_dict = piexif.load(exif_data)
+                except Exception as e:
+                    self.logger.debug(f"Could not load existing EXIF, creating new: {e}")
+                    exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "Interop": {}, "1st": {}, "thumbnail": None}
+            
+            # Add timestamp (always add this)
             self._add_timestamp_metadata(exif_dict, timestamp)
             
-            # Add GPS data if available
+            # Add GPS data only if available and valid
             if gps_fix and gps_fix.is_valid:
-                self._add_gps_metadata(exif_dict, gps_fix)
+                try:
+                    self._add_gps_metadata(exif_dict, gps_fix)
+                    self.logger.debug("Added GPS metadata to image")
+                except Exception as e:
+                    self.logger.warning(f"Failed to add GPS metadata: {e}")
             
             # Add camera/software information
             self._add_software_metadata(exif_dict)
             
             # Convert EXIF dict to bytes
-            exif_bytes = piexif.dump(exif_dict)
-            
-            # Create new image with EXIF data
-            img_bytes = io.BytesIO()
-            image.save(img_bytes, format='JPEG', exif=exif_bytes)
-            img_bytes.seek(0)
-            
-            return Image.open(img_bytes)
+            try:
+                exif_bytes = piexif.dump(exif_dict)
+                
+                # Create new image with EXIF data
+                img_bytes = io.BytesIO()
+                image.save(img_bytes, format='JPEG', exif=exif_bytes)
+                img_bytes.seek(0)
+                
+                return Image.open(img_bytes)
+                
+            except Exception as e:
+                self.logger.warning(f"Failed to create EXIF data, saving image without metadata: {e}")
+                return image
             
         except Exception as e:
-            self.logger.warning(f"Could not add metadata: {e}")
+            self.logger.warning(f"Metadata processing failed, saving image without metadata: {e}")
             return image
     
     def _add_timestamp_metadata(self, exif_dict: Dict, timestamp: datetime) -> None:

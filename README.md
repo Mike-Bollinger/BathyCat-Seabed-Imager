@@ -279,14 +279,72 @@ The enhanced configuration system (`src/config.py`) provides:
 
 ### LED Status Indicators
 
-| LED | Pattern | Meaning |
-|-----|---------|---------|
-| Status (Green) | Solid | System running normally |
-| Status (Green) | Slow blink | Starting up / GPS acquiring |
-| Error (Red) | Off | No errors |
-| Error (Red) | Solid | Critical error |
-| Error (Red) | Fast blink | Warning condition |
-| Activity (Blue) | Blink | Image captured |
+The BathyImager system uses GPIO-controlled LEDs to provide visual status feedback during autonomous operation. LEDs are configured via the `led_*_pin` settings in the configuration file.
+
+#### LED Configuration
+
+```json
+{
+  "led_power_pin": 18,    # Power/Status LED (GPIO 18)
+  "led_gps_pin": 23,      # GPS Status LED (GPIO 23) 
+  "led_camera_pin": 24,   # Camera Status LED (GPIO 24)
+  "led_error_pin": 25     # Error Status LED (GPIO 25)
+}
+```
+
+#### LED Status Patterns
+
+| LED | Color/Location | Pattern | Meaning |
+|-----|----------------|---------|---------|
+| **Power LED** (GPIO 18) | Green | Solid | System running normally |
+| Power LED | Green | Slow blink (1 Hz) | System starting up |
+| Power LED | Green | Fast blink (2 Hz) | System shutting down |
+| Power LED | Off | System powered off or failed |
+| **GPS LED** (GPIO 23) | Blue | Solid | GPS fix acquired (>4 satellites) |
+| GPS LED | Blue | Slow blink (0.5 Hz) | GPS searching for fix |
+| GPS LED | Blue | Fast blink (3 Hz) | GPS initializing |
+| GPS LED | Off | GPS disabled or failed |
+| **Camera LED** (GPIO 24) | Yellow | Brief flash | Image captured |
+| Camera LED | Yellow | Solid | Camera active/recording |
+| Camera LED | Yellow | Fast blink | Camera error/retry |
+| Camera LED | Off | Camera inactive or failed |
+| **Error LED** (GPIO 25) | Red | Off | No errors |
+| Error LED | Red | Slow blink (0.5 Hz) | Warning condition |
+| Error LED | Red | Fast blink (2 Hz) | Recoverable error |
+| Error LED | Red | Solid | Critical system error |
+
+#### LED Hardware Setup
+
+```bash
+# Basic LED wiring (with current-limiting resistors)
+# GPIO 18 (Power) -> 220Ω -> Green LED -> Ground
+# GPIO 23 (GPS) -> 220Ω -> Blue LED -> Ground  
+# GPIO 24 (Camera) -> 220Ω -> Yellow LED -> Ground
+# GPIO 25 (Error) -> 220Ω -> Red LED -> Ground
+
+# For higher brightness or multiple LEDs per function:
+# GPIO -> 1kΩ -> NPN Transistor Base
+# Transistor Collector -> LED Cathode
+# LED Anode -> 3.3V (through appropriate resistor)
+# Transistor Emitter -> Ground
+```
+
+#### Troubleshooting LED Issues
+
+```bash
+# Test LED functionality manually
+echo "18" > /sys/class/gpio/export
+echo "out" > /sys/class/gpio/gpio18/direction
+echo "1" > /sys/class/gpio/gpio18/value  # Turn on
+echo "0" > /sys/class/gpio/gpio18/value  # Turn off
+
+# Check GPIO permissions
+ls -la /dev/gpiomem
+groups bathyimager | grep gpio
+
+# Verify LED initialization in logs
+journalctl -u bathyimager | grep -i led
+```
 
 ### Log Monitoring
 
