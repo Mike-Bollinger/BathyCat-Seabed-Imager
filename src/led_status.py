@@ -384,10 +384,10 @@ class LEDManager:
             if error:
                 self.leds['camera'].set_state(LEDState.SOS)
             elif capturing:
-                # Signal capture with brief flash instead of solid LED
+                # Signal capture with 200ms flash
                 self.signal_capture()
             elif active:
-                self.leds['camera'].set_state(LEDState.HEARTBEAT)  # Heartbeat when active and ready
+                self.leds['camera'].set_state(LEDState.OFF)  # OFF when active but not capturing
             else:
                 self.leds['camera'].set_state(LEDState.OFF)
     
