@@ -47,11 +47,14 @@ class StorageManager:
         self.logger = logging.getLogger(__name__)
         
         # Storage settings from config
-        self.base_path = config.get('storage_base_path', '/media/usb-storage/bathycat')
+        self.base_path = config.get('storage_base_path', '/media/usb/bathyimager')
         self.min_free_space_gb = config.get('min_free_space_gb', 5.0)
         self.auto_cleanup_enabled = config.get('auto_cleanup_enabled', True)
         self.cleanup_threshold_gb = config.get('cleanup_threshold_gb', 10.0)
         self.days_to_keep = config.get('days_to_keep', 30)
+        
+        # Define structured paths
+        self.images_path = os.path.join(self.base_path, 'images')
         
         # Storage state
         self.is_available = False
@@ -86,8 +89,11 @@ class StorageManager:
             if not self._check_free_space():
                 return False
             
-            # Create directory structure
+            # Create directory structure (always ensure it exists)
             self._create_directory_structure()
+            
+            # Verify directory structure integrity
+            self._verify_directory_structure()
             
             # Perform cleanup if needed
             if self.auto_cleanup_enabled:
@@ -153,28 +159,63 @@ class StorageManager:
         return True
     
     def _create_directory_structure(self) -> None:
-        """Create organized directory structure."""
+        """Create organized directory structure: bathyimager/images/YYYYMMDD/."""
         try:
+            # Create main bathyimager directory
+            os.makedirs(self.base_path, exist_ok=True)
+            
+            # Create images directory
+            os.makedirs(self.images_path, exist_ok=True)
+            
+            # Create today's date directory
             today = datetime.now()
+            today_dir = f"{today.year:04d}{today.month:02d}{today.day:02d}"
+            today_path = os.path.join(self.images_path, today_dir)
+            os.makedirs(today_path, exist_ok=True)
             
-            # Create year/month directories
-            year_path = os.path.join(self.base_path, f"{today.year:04d}")
-            month_path = os.path.join(year_path, f"{today.month:02d}")
-            
-            os.makedirs(month_path, exist_ok=True)
-            
-            # Create logs directory
+            # Create logs directory (separate from images)
             logs_path = os.path.join(self.base_path, 'logs')
             os.makedirs(logs_path, exist_ok=True)
             
-            self.logger.debug(f"Directory structure created: {month_path}")
+            self.logger.debug(f"Directory structure created: {today_path}")
             
         except Exception as e:
             self.logger.warning(f"Could not create directory structure: {e}")
     
+    def _verify_directory_structure(self) -> None:
+        """Verify and log the directory structure to confirm it's correct."""
+        try:
+            if os.path.exists(self.base_path):
+                self.logger.info(f"Storage base directory: {self.base_path}")
+                
+                if os.path.exists(self.images_path):
+                    self.logger.info(f"Images directory: {self.images_path}")
+                    
+                    # List date directories
+                    date_dirs = []
+                    try:
+                        for item in os.listdir(self.images_path):
+                            if os.path.isdir(os.path.join(self.images_path, item)) and len(item) == 8 and item.isdigit():
+                                date_dirs.append(item)
+                    except Exception:
+                        pass
+                    
+                    if date_dirs:
+                        date_dirs.sort(reverse=True)  # Newest first
+                        self.logger.info(f"Date directories found: {len(date_dirs)} (newest: {date_dirs[0] if date_dirs else 'none'})")
+                    else:
+                        self.logger.info("No date directories found (will be created as needed)")
+                else:
+                    self.logger.warning(f"Images directory missing: {self.images_path}")
+            else:
+                self.logger.warning(f"Storage base directory missing: {self.base_path}")
+                
+        except Exception as e:
+            self.logger.debug(f"Error verifying directory structure: {e}")
+    
     def get_image_path(self, timestamp: Optional[datetime] = None) -> str:
         """
-        Generate organized file path for image.
+        Generate organized file path for image: bathyimager/images/YYYYMMDD/filename.jpg
         
         Args:
             timestamp: Image timestamp (uses current time if None)
@@ -185,16 +226,13 @@ class StorageManager:
         if timestamp is None:
             timestamp = datetime.now()
         
-        # Create hierarchical path: year/month/day/
-        year = f"{timestamp.year:04d}"
-        month = f"{timestamp.month:02d}"
-        day = f"{timestamp.day:02d}"
-        
-        dir_path = os.path.join(self.base_path, year, month, day)
+        # Create date directory: YYYYMMDD format
+        date_dir = f"{timestamp.year:04d}{timestamp.month:02d}{timestamp.day:02d}"
+        dir_path = os.path.join(self.images_path, date_dir)
         os.makedirs(dir_path, exist_ok=True)
         
-        # Generate filename with timestamp and counter
-        filename = f"bathycat_{timestamp.strftime('%Y%m%d_%H%M%S_%f')[:-3]}.jpg"
+        # Generate filename with timestamp and microseconds for uniqueness
+        filename = f"bathyimager_{timestamp.strftime('%Y%m%d_%H%M%S_%f')[:-3]}.jpg"
         
         return os.path.join(dir_path, filename)
     
@@ -252,7 +290,7 @@ class StorageManager:
     def _count_images(self) -> int:
         """Count total number of images in storage."""
         try:
-            pattern = os.path.join(self.base_path, "**", "*.jpg")
+            pattern = os.path.join(self.images_path, "**", "*.jpg")
             return len(glob.glob(pattern, recursive=True))
         except Exception:
             return 0
@@ -267,28 +305,30 @@ class StorageManager:
             cleanup_bytes = 0
             cleanup_files = 0
             
-            # Walk through all files
-            for root, dirs, files in os.walk(self.base_path):
-                for file in files:
-                    filepath = os.path.join(root, file)
-                    
-                    try:
-                        # Check file age
-                        file_time = datetime.fromtimestamp(os.path.getctime(filepath))
-                        
-                        if file_time < cutoff_date:
-                            file_size = os.path.getsize(filepath)
-                            os.remove(filepath)
+            # Walk through image files only (not logs or other files)
+            if os.path.exists(self.images_path):
+                for root, dirs, files in os.walk(self.images_path):
+                    for file in files:
+                        if file.endswith('.jpg'):  # Only process image files
+                            filepath = os.path.join(root, file)
                             
-                            cleanup_bytes += file_size
-                            cleanup_files += 1
-                            
-                            self.logger.debug(f"Deleted old file: {filepath}")
-                            
-                    except Exception as e:
-                        self.logger.debug(f"Could not process file {filepath}: {e}")
+                            try:
+                                # Check file age
+                                file_time = datetime.fromtimestamp(os.path.getctime(filepath))
+                                
+                                if file_time < cutoff_date:
+                                    file_size = os.path.getsize(filepath)
+                                    os.remove(filepath)
+                                    
+                                    cleanup_bytes += file_size
+                                    cleanup_files += 1
+                                    
+                                    self.logger.debug(f"Deleted old file: {filepath}")
+                                    
+                            except Exception as e:
+                                self.logger.debug(f"Could not process file {filepath}: {e}")
             
-            # Remove empty directories
+            # Remove empty date directories (but preserve images directory)
             self._remove_empty_dirs()
             
             # Update statistics
@@ -304,17 +344,20 @@ class StorageManager:
             self.logger.error(f"Cleanup failed: {e}")
     
     def _remove_empty_dirs(self) -> None:
-        """Remove empty directories."""
+        """Remove empty date directories but preserve main structure."""
         try:
-            for root, dirs, files in os.walk(self.base_path, topdown=False):
-                for dir_name in dirs:
-                    dir_path = os.path.join(root, dir_name)
-                    try:
-                        if not os.listdir(dir_path):  # Directory is empty
-                            os.rmdir(dir_path)
-                            self.logger.debug(f"Removed empty directory: {dir_path}")
-                    except Exception:
-                        pass  # Directory not empty or other error
+            if os.path.exists(self.images_path):
+                for root, dirs, files in os.walk(self.images_path, topdown=False):
+                    for dir_name in dirs:
+                        dir_path = os.path.join(root, dir_name)
+                        try:
+                            # Only remove if it's a date directory (YYYYMMDD format) and empty
+                            if (len(dir_name) == 8 and dir_name.isdigit() and 
+                                not os.listdir(dir_path)):
+                                os.rmdir(dir_path)
+                                self.logger.debug(f"Removed empty date directory: {dir_path}")
+                        except Exception:
+                            pass  # Directory not empty or other error
         except Exception as e:
             self.logger.debug(f"Error removing empty directories: {e}")
     
@@ -406,7 +449,7 @@ class StorageManager:
             list: List of image file paths
         """
         try:
-            pattern = os.path.join(self.base_path, "**", "*.jpg")
+            pattern = os.path.join(self.images_path, "**", "*.jpg")
             all_images = glob.glob(pattern, recursive=True)
             
             # Sort by modification time (newest first)

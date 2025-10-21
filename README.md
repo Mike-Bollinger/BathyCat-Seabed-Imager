@@ -92,7 +92,7 @@ sudo journalctl -u bathyimager -f
 # - Solid green LED (power)
 # - Blue LED (GPS status) - solid when fix acquired
 # - Yellow LED flashes briefly each time photo is taken
-# - Images being saved to /media/usb/bathyimager/YYYY/MM/DD/
+# - Images being saved to /media/usb/bathyimager/images/YYYYMMDD/
 ```
 
 ### 2. Hardware Diagnostics and Configuration
@@ -875,7 +875,7 @@ sudo systemctl restart bathyimager
 
 # Weekly: Check storage usage and image count
 du -sh /media/usb/bathyimager/*
-ls /media/usb/bathyimager/$(date +%Y/%m/%d)/ | wc -l  # Today's image count
+ls /media/usb/bathyimager/images/$(date +%Y%m%d)/ | wc -l  # Today's image count
 
 # Weekly: Check service logs for errors
 sudo journalctl -u bathyimager --since "7 days ago" | grep -i error
