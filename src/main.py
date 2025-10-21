@@ -460,17 +460,17 @@ class BathyCatService:
         self.logger.info("Attempting system recovery")
         recovery_success = True
         
-        # Try to recover camera
+        # Try to recover camera (non-critical - will retry later)
         if not self.component_health['camera'] and self.camera:
             self.logger.info("Attempting camera recovery")
             if self.camera.reconnect():
                 self.component_health['camera'] = True
                 self.logger.info("Camera recovery successful")
             else:
-                self.logger.warning("Camera recovery failed")
-                recovery_success = False
+                self.logger.warning("Camera recovery failed - will retry during next capture attempt")
+                # Don't fail recovery for camera - it will retry during capture
         
-        # Try to recover GPS
+        # Try to recover GPS (non-critical if not required)
         if not self.component_health['gps'] and self.gps:
             self.logger.info("Attempting GPS recovery")
             if self.gps.reconnect():
@@ -478,8 +478,12 @@ class BathyCatService:
                 self.logger.info("GPS recovery successful")
             else:
                 self.logger.warning("GPS recovery failed")
+                # Only fail recovery if GPS is absolutely required
                 if self.require_gps_fix:
+                    self.logger.error("GPS is required but unavailable")
                     recovery_success = False
+                else:
+                    self.logger.info("GPS not required - continuing without GPS")
         
         # Check storage (critical component)
         if not self.component_health['storage']:

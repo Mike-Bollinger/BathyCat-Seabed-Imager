@@ -14,6 +14,11 @@ WorkingDirectory=/home/bathyimager/BathyCat-Seabed-Imager/src
 Environment=PYTHONPATH=/home/bathyimager/BathyCat-Seabed-Imager/src
 Environment=PYTHONUNBUFFERED=1
 ExecStartPre=/bin/sleep 10
+ExecStartPre=/bin/bash -c 'chmod 666 /dev/video* 2>/dev/null || true'
+ExecStartPre=/bin/bash -c 'chmod 666 /dev/ttyUSB* 2>/dev/null || true'
+ExecStartPre=/bin/bash -c 'chmod 666 /dev/ttyACM* 2>/dev/null || true'
+ExecStartPre=/bin/bash -c 'chmod 666 /dev/gpiomem 2>/dev/null || true'
+ExecStartPre=/bin/bash -c 'chmod 666 /dev/mem 2>/dev/null || true'
 ExecStart=/home/bathyimager/BathyCat-Seabed-Imager/run_bathyimager.sh
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=mixed
@@ -63,13 +68,13 @@ DevicePolicy=auto
 # Network restrictions
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
-# System call filtering (allow hardware access)
-SystemCallFilter=~@obsolete @keyring @module @mount @raw-io
-SystemCallErrorNumber=EPERM
+# System call filtering (minimal restrictions for hardware access)
+# SystemCallFilter=~@obsolete @keyring @module @mount
+# SystemCallErrorNumber=EPERM
 
-# File system restrictions
-ProtectProc=invisible
-ProcSubset=pid
+# File system restrictions (disabled for hardware access)
+# ProtectProc=invisible
+# ProcSubset=pid
 
 [Install]
 WantedBy=multi-user.target

@@ -38,6 +38,7 @@ def _init_gpio():
         GPIO = _GPIO
         GPIO_AVAILABLE = True
     except (ImportError, RuntimeError, Exception) as e:
+        print(f"GPIO setup failed: {e}")  # Print directly since logger may not be available yet
         GPIO_AVAILABLE = False
         # Mock GPIO for testing on non-Pi systems or when RPi.GPIO fails
         class MockGPIO:
@@ -246,8 +247,8 @@ class LEDManager:
             gpio_available = _init_gpio()
             
             if not gpio_available:
-                self.logger.warning("GPIO not available - LED functionality disabled")
-                return True  # Don't fail completely
+                self.logger.warning("GPIO not available - LED functionality disabled (this is normal on non-Pi systems or with permission issues)")
+                return True  # Don't fail completely, continue without LEDs
             
             self.logger.info("Initializing LED system")
             
