@@ -25,38 +25,91 @@ The BathyImager Seabed Imager is designed to run on autonomous surface vessels (
 - **MicroSD Card** (32GB+ for OS and logs)
 - **Status LEDs** (optional, for visual feedback)
 
-## Quick Start
+## Quick Start Guide
 
-### 1. Initial Setup
+### Fresh Raspberry Pi Setup (Complete Installation)
 
+#### 1. Prepare Raspberry Pi OS
 ```bash
-# Clone the repository
-git clone https://github.com/Mike-Bollinger/BathyImager-Seabed-Imager.git
-cd BathyImager-Seabed-Imager
+# Start with fresh Raspberry Pi OS (Bullseye or later recommended)
+# Enable SSH if needed: sudo systemctl enable ssh
 
-# Run the installation script
+# Update system packages
+sudo apt update && sudo apt upgrade -y
+
+# Install git (if not already installed)
+sudo apt install -y git
+
+# Create project directory and clone repository
+cd ~
+git clone https://github.com/Mike-Bollinger/BathyCat-Seabed-Imager.git
+cd BathyCat-Seabed-Imager
+```
+
+#### 2. Connect Hardware
+```bash
+# Before running installer, connect hardware:
+# - USB Camera (should appear as /dev/video0)
+# - USB GPS (should appear as /dev/ttyUSB0 or /dev/ttyACM0) 
+# - USB Storage Drive (will be mounted to /media/usb)
+# - LED indicators on GPIO pins 18, 23, 24, 25 (optional)
+
+# Verify hardware detection
+lsusb  # Should show camera and GPS
+ls -la /dev/video* /dev/ttyUSB* /dev/ttyACM*
+```
+
+#### 3. Run Full Installation
+```bash
+# Run the comprehensive installation script
 sudo ./scripts/install.sh
 
 # The installer will:
-# - Update the system
-# - Install required packages
-# - Set up Python environment
-# - Configure the service
+# - Update the system packages
+# - Install required dependencies (Python, OpenCV, etc.)
+# - Create 'bathyimager' user account
+# - Set up Python virtual environment
+# - Install Python packages
+# - Configure device permissions and udev rules
+# - Create and enable systemd service
 # - Set up USB auto-mounting
 # - Configure log rotation
+# - Run initial hardware tests
 ```
 
-### 2. Configuration
+#### 4. Verify Installation
+```bash
+# Check hardware and permissions
+./scripts/hardware_diagnostics.sh all
+
+# Check service status
+sudo systemctl status bathyimager
+
+# View real-time logs
+sudo journalctl -u bathyimager -f
+
+# If service is running, you should see:
+# - Solid green LED (power)
+# - Blue LED (GPS status) - solid when fix acquired
+# - Yellow LED flashes briefly each time photo is taken
+# - Images being saved to /media/usb/bathyimager/YYYY/MM/DD/
+```
+
+### 2. Hardware Diagnostics and Configuration
 
 ```bash
-# Create default configuration
-cd /opt/bathyimager/src && sudo python3 -m config --create-default
+# Run hardware diagnostics to check system status
+./scripts/hardware_diagnostics.sh all
 
-# Edit configuration if needed
-sudo nano /etc/bathyimager/config.json
+# Check device permissions and user groups
+./scripts/hardware_diagnostics.sh permissions
 
-# Validate configuration
-cd /opt/bathyimager/src && sudo python3 -m config --validate
+# Edit configuration if needed (installer creates default)
+sudo nano config/bathycat_config.json
+
+# Test hardware manually if needed
+./scripts/hardware_diagnostics.sh camera
+./scripts/hardware_diagnostics.sh gps
 ```
 
 ### 3. Network Configuration (Dual Ethernet + WiFi)
@@ -84,20 +137,69 @@ sudo ./scripts/wifi_config.sh
 
 See [Network Setup Guide](docs/NETWORK_SETUP.md) for detailed configuration instructions.
 
-### 4. Service Management
+## System Control
+
+### Service Management Commands
 
 ```bash
-# Start the service
-sudo systemctl start bathyimager
-
-# Check status
+# Check current service status
 sudo systemctl status bathyimager
 
-# View logs
+# Start the imaging system
+sudo systemctl start bathyimager
+
+# Stop the imaging system
+sudo systemctl stop bathyimager
+
+# Restart the system (applies configuration changes)
+sudo systemctl restart bathyimager
+
+# Enable auto-start on boot (production mode)
+sudo systemctl enable bathyimager
+
+# Disable auto-start on boot
+sudo systemctl disable bathyimager
+
+# View real-time system logs
 sudo journalctl -u bathyimager -f
 
-# Enable auto-start on boot
-sudo systemctl enable bathyimager
+# View recent logs (last 50 lines)
+sudo journalctl -u bathyimager -n 50
+```
+
+### Manual Operation (Testing/Development)
+
+```bash
+# Run system manually for testing (stops when you press Ctrl+C)
+cd ~/BathyCat-Seabed-Imager
+./run_bathyimager.sh
+
+# Run with debug output
+./run_bathyimager.sh --verbose
+
+# Run with custom configuration
+./run_bathyimager.sh --config config/custom_config.json
+
+# Run Python directly (advanced)
+cd src
+source ../venv/bin/activate
+python3 main.py --config ../config/bathycat_config.json
+```
+
+### System Shutdown
+
+```bash
+# Graceful shutdown (recommended)
+sudo systemctl stop bathyimager
+
+# Check that service has stopped
+sudo systemctl status bathyimager
+
+# For complete system shutdown
+sudo shutdown -h now
+
+# Or reboot system
+sudo reboot
 ```
 
 ## System Architecture
@@ -146,23 +248,28 @@ The enhanced configuration system (`src/config.py`) provides:
 ### File Organization
 
 ```
-/opt/bathyimager/              # Installation directory
-├── src/                    # Source code
-├── scripts/                # Installation and maintenance scripts
-├── venv/                   # Python virtual environment
-├── VERSION                 # Version information
-└── backups/               # Update backups
-
-/etc/bathyimager/             # Configuration directory
-└── config.json            # Main configuration file
+/home/bathyimager/BathyCat-Seabed-Imager/  # Installation directory
+├── src/                                    # Source code
+├── scripts/                               # Installation and maintenance scripts
+├── config/                                # Configuration files
+├── venv/                                 # Python virtual environment
+├── run_bathyimager.sh                    # Service run script
+└── update                                # Quick update script
 
 /var/log/bathyimager/         # Log directory
-├── bathyimager.log           # Application logs
-└── system.log             # System-level logs
+├── bathyimager.log           # Application logs (rotated)
+└── system.log               # System-level logs
 
-/media/usb/                # Default USB storage
-└── YYYY/MM/DD/            # Date-based organization
-    └── bathyimager_*.jpg     # Geotagged images
+/media/usb/                  # Default USB storage mount point
+└── bathyimager/            # BathyImager data directory
+    └── YYYY/MM/DD/         # Date-based organization
+        └── bathyimager_*.jpg  # Geotagged images
+
+/etc/systemd/system/         # System service files
+└── bathyimager.service     # BathyImager systemd service
+
+/etc/udev/rules.d/          # Device rules
+└── 99-bathyimager.rules   # Hardware permission rules
 ```
 
 ## Configuration Reference
@@ -257,25 +364,68 @@ The enhanced configuration system (`src/config.py`) provides:
 
 ## Operation Guide
 
-### Normal Operation
+### System Startup and Shutdown
+
+#### Automatic Operation (Production Mode)
+```bash
+# Enable auto-start on boot
+sudo systemctl enable bathyimager
+
+# Start service now
+sudo systemctl start bathyimager
+
+# Check if service is running
+sudo systemctl status bathyimager
+
+# Stop service
+sudo systemctl stop bathyimager
+
+# Disable auto-start
+sudo systemctl disable bathyimager
+```
+
+#### Manual Operation (Testing/Development)
+```bash
+# Run system manually for testing
+cd ~/BathyCat-Seabed-Imager
+./run_bathyimager.sh
+
+# Run with specific configuration
+./run_bathyimager.sh --config config/custom_config.json
+
+# Run in development mode
+cd src
+python3 main.py --config ../config/bathycat_config.json
+```
+
+### Normal Operation Flow
 
 1. **System Startup**
-   - Service starts automatically on boot
-   - LED test sequence (if enabled)
+   - Service starts automatically on boot (if enabled)
+   - LED self-test sequence (all LEDs briefly light)
    - Hardware initialization and health checks
-   - GPS fix acquisition
-   - Image capture begins when GPS lock obtained
+   - GPS connection and fix acquisition
+   - USB storage detection and mounting
+   - Image capture begins when systems ready
 
 2. **Image Capture Process**
-   - Continuous capture at configured interval
-   - GPS coordinates embedded in EXIF metadata
+   - Continuous capture at configured interval (default: 1 second)
+   - GPS coordinates embedded in EXIF metadata (when available)
    - Images saved with timestamp-based naming
-   - Status indicated via LEDs and logs
+   - Visual status indicated via LEDs
+   - Comprehensive logging to files and system journal
 
 3. **Storage Management**
-   - Automatic directory creation by date
+   - Automatic directory creation by date (YYYY/MM/DD)
    - File cleanup when storage limits reached
-   - USB device monitoring and remounting
+   - USB device monitoring and automatic remounting
+   - Graceful handling of storage device removal/insertion
+
+4. **Error Recovery**
+   - Automatic retry on hardware failures
+   - Service continues even if GPS or camera temporarily unavailable
+   - LED indicators show system health status
+   - Detailed error logging for troubleshooting
 
 ### LED Status Indicators
 
@@ -304,10 +454,10 @@ The BathyImager system uses GPIO-controlled LEDs to provide visual status feedba
 | GPS LED | Blue | Slow blink (0.5 Hz) | GPS searching for fix |
 | GPS LED | Blue | Fast blink (3 Hz) | GPS initializing |
 | GPS LED | Off | GPS disabled or failed |
-| **Camera LED** (GPIO 24) | Yellow | Brief flash | Image captured |
-| Camera LED | Yellow | Solid | Camera active/recording |
-| Camera LED | Yellow | Fast blink | Camera error/retry |
-| Camera LED | Off | Camera inactive or failed |
+| **Camera LED** (GPIO 24) | Yellow | Brief flash | Image captured (each photo) |
+| Camera LED | Yellow | Solid | Camera active/standby |
+| Camera LED | Yellow | SOS pattern (... --- ...) | Camera error/failure |
+| Camera LED | Off | Camera inactive or disabled |
 | **Error LED** (GPIO 25) | Red | Off | No errors |
 | Error LED | Red | Slow blink (0.5 Hz) | Warning condition |
 | Error LED | Red | Fast blink (2 Hz) | Recoverable error |
@@ -483,33 +633,63 @@ For development on non-Raspberry Pi systems:
 #### Camera Not Detected
 
 ```bash
-# Check USB cameras
+# Check USB cameras connected
 lsusb | grep -i camera
 
-# Check video devices
+# Check video devices and permissions
 ls -la /dev/video*
 
-# Test camera manually
+# Test camera manually with ffplay
 ffplay /dev/video0
 
-# Check permissions
-sudo usermod -a -G video pi
+# Or test with OpenCV
+python3 -c "import cv2; cap=cv2.VideoCapture(0); print('Camera OK' if cap.isOpened() else 'Camera Failed')"
+
+# Check user permissions
+groups bathyimager | grep video
+
+# Fix permissions if needed
+sudo usermod -a -G video bathyimager
+sudo ./scripts/setup_device_permissions.sh
+
+# Run camera-specific diagnostics
+./scripts/hardware_diagnostics.sh camera
 ```
 
 #### GPS Not Working
 
 ```bash
-# Check USB GPS device
+# Check USB GPS device connected
 lsusb | grep -i gps
 
-# Check serial devices
+# Check serial devices and permissions
 ls -la /dev/ttyUSB* /dev/ttyACM*
 
-# Test GPS manually
+# Test GPS data stream manually
 sudo cat /dev/ttyUSB0
+# Look for NMEA sentences like: $GPGGA,123519,4807.038,N,01131.000,E...
 
-# Check permissions
-sudo usermod -a -G dialout pi
+# Check user permissions
+groups bathyimager | grep dialout
+
+# Fix permissions if needed
+sudo usermod -a -G dialout bathyimager
+sudo ./scripts/setup_device_permissions.sh
+
+# Run GPS-specific diagnostics
+./scripts/hardware_diagnostics.sh gps
+
+# Test GPS with Python
+python3 -c "
+import serial
+try:
+    ser = serial.Serial('/dev/ttyUSB0', 9600, timeout=5)
+    data = ser.read(100)
+    print('GPS data:', data.decode('ascii', errors='ignore'))
+    ser.close()
+except Exception as e:
+    print('GPS error:', e)
+"
 ```
 
 #### Storage Issues
@@ -532,18 +712,27 @@ df -h /media/usb
 #### Service Not Starting
 
 ```bash
-# Check service status
+# Check service status and recent failures
 sudo systemctl status bathyimager
 
-# View detailed logs
+# View detailed logs (last 50 lines)
 sudo journalctl -u bathyimager -n 50
 
-# Check configuration
-cd /opt/bathycat/src && sudo python3 -m config --validate
+# View live logs
+sudo journalctl -u bathyimager -f
 
-# Test manually
-cd /opt/bathycat/src
-sudo -u pi ../venv/bin/python -m main
+# Check device permissions and hardware
+./scripts/hardware_diagnostics.sh permissions
+
+# Test system manually
+cd ~/BathyCat-Seabed-Imager
+sudo -u bathyimager ./run_bathyimager.sh
+
+# Reinstall/update service configuration
+sudo ./scripts/install.sh --update
+
+# Reset device permissions
+sudo ./scripts/setup_device_permissions.sh
 ```
 
 #### Network Connectivity Issues
@@ -574,6 +763,49 @@ sudo systemctl disable NetworkManager
 sudo systemctl stop NetworkManager
 ```
 
+#### Device Permission Issues
+
+```bash
+# Run comprehensive permission diagnostics
+./scripts/hardware_diagnostics.sh permissions
+
+# Check user group membership
+groups bathyimager
+
+# Add user to required groups (if missing)
+sudo usermod -a -G video,dialout,gpio bathyimager
+
+# Reset device permissions manually
+sudo ./scripts/setup_device_permissions.sh
+
+# Reload udev rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+
+# Check if devices have correct permissions
+ls -la /dev/video* /dev/ttyUSB* /dev/ttyACM* /dev/gpiomem
+
+# If still having issues, reinstall service with updated permissions
+sudo ./scripts/install.sh --update
+```
+
+#### LED Not Working
+
+```bash
+# Check if LEDs are enabled in configuration
+grep -A5 "led" ~/BathyCat-Seabed-Imager/config/bathycat_config.json
+
+# Check GPIO permissions
+ls -la /dev/gpiomem
+groups bathyimager | grep gpio
+
+# Test LED manually (as root)
+echo 18 > /sys/class/gpio/export
+echo out > /sys/class/gpio/gpio18/direction
+echo 1 > /sys/class/gpio/gpio18/value  # Should turn on LED on GPIO 18
+echo 0 > /sys/class/gpio/gpio18/value  # Should turn off LED
+```
+
 ### Error Codes
 
 | Code | Description | Solution |
@@ -583,9 +815,9 @@ sudo systemctl stop NetworkManager
 | E003 | Storage unavailable | Check USB drive connection |
 | E004 | Configuration invalid | Fix configuration file |
 | E005 | Insufficient disk space | Clean storage or add capacity |
-| E006 | Network connectivity lost | Check network configuration |
-| E007 | Ethernet interface down | Check cable and interface status |
-| E008 | WiFi authentication failed | Verify WiFi credentials |
+| E006 | Device permission denied | Run setup_device_permissions.sh |
+| E007 | Service startup failed | Check journalctl logs and hardware diagnostics |
+| E008 | Hardware not detected | Check USB connections and device power |
 
 ### Recovery Procedures
 
@@ -615,37 +847,75 @@ done
 
 ## Maintenance
 
+### Configuration Management
+
+```bash
+# View current configuration
+cat ~/BathyCat-Seabed-Imager/config/bathycat_config.json
+
+# Edit configuration (requires service restart to apply)
+nano ~/BathyCat-Seabed-Imager/config/bathycat_config.json
+
+# Apply configuration changes
+sudo systemctl restart bathyimager
+
+# Backup current configuration
+cp ~/BathyCat-Seabed-Imager/config/bathycat_config.json ~/config_backup.json
+
+# Restore configuration from backup
+cp ~/config_backup.json ~/BathyCat-Seabed-Imager/config/bathycat_config.json
+sudo systemctl restart bathyimager
+```
+
 ### Regular Maintenance Tasks
 
 ```bash
-# Check system health (weekly)
-sudo ./scripts/health-check.sh
+# Weekly: Check system health and hardware status
+./scripts/hardware_diagnostics.sh all
 
-# Update system (monthly)
-sudo ./scripts/bathycat-update --check
-sudo ./scripts/bathycat-update
+# Weekly: Check storage usage and image count
+du -sh /media/usb/bathyimager/*
+ls /media/usb/bathyimager/$(date +%Y/%m/%d)/ | wc -l  # Today's image count
 
-# Clean old logs (monthly)
+# Weekly: Check service logs for errors
+sudo journalctl -u bathyimager --since "7 days ago" | grep -i error
+
+# Monthly: Update system software
+cd ~/BathyCat-Seabed-Imager
+./update
+sudo ./scripts/install.sh --update
+
+# Monthly: Clean old logs (keep 30 days)
 sudo journalctl --vacuum-time=30d
 
-# Check storage usage (weekly)
-du -sh /media/usb/*
+# Monthly: Check and clean old images if storage getting full
+df -h /media/usb  # Check free space
+# Manual cleanup if needed:
+# find /media/usb/bathyimager -name "*.jpg" -mtime +60 -delete
+
+# As needed: Restart service if any issues
+sudo systemctl restart bathyimager
 ```
 
 ### Update System
 
 ```bash
-# Check for updates
-sudo ./scripts/bathycat-update --check
+# Quick update from GitHub (recommended)
+cd ~/BathyCat-Seabed-Imager
+./update
 
-# Perform update
-sudo ./scripts/bathycat-update
+# Update with automatic stashing of local changes
+./update --stash
 
-# Force update
-sudo ./scripts/bathycat-update --force
+# Force update (discards local changes)
+./update --force
 
-# Show version information
-sudo ./scripts/bathycat-update --version
+# After update, reinstall/update service configuration
+sudo ./scripts/install.sh --update
+
+# Check if service needs restart
+sudo systemctl status bathyimager
+sudo systemctl restart bathyimager  # if needed
 ```
 
 ### Backup and Recovery
@@ -733,6 +1003,59 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **Issues**: GitHub Issues
 - **Documentation**: This README and inline code documentation
 - **Discussions**: GitHub Discussions
+
+## Quick Reference
+
+### Essential Commands
+
+```bash
+# System Status
+sudo systemctl status bathyimager              # Check service status
+sudo journalctl -u bathyimager -f             # View live logs
+./scripts/hardware_diagnostics.sh all         # Check hardware health
+
+# System Control  
+sudo systemctl start bathyimager              # Start imaging
+sudo systemctl stop bathyimager               # Stop imaging
+sudo systemctl restart bathyimager            # Restart (apply config changes)
+sudo systemctl enable bathyimager             # Enable auto-start on boot
+
+# Manual Operation
+cd ~/BathyCat-Seabed-Imager && ./run_bathyimager.sh   # Run manually
+
+# Troubleshooting
+./scripts/hardware_diagnostics.sh permissions  # Check device permissions
+sudo ./scripts/setup_device_permissions.sh    # Fix permission issues
+sudo ./scripts/install.sh --update            # Reinstall/update service
+
+# Updates and Maintenance
+cd ~/BathyCat-Seabed-Imager && ./update      # Update software
+du -sh /media/usb/bathyimager/*              # Check storage usage
+sudo journalctl --vacuum-time=30d            # Clean old logs
+```
+
+### File Locations
+
+```bash
+# Main installation
+~/BathyCat-Seabed-Imager/                     # Project directory
+~/BathyCat-Seabed-Imager/config/bathycat_config.json  # Configuration
+
+# System files
+/etc/systemd/system/bathyimager.service       # Service definition
+/etc/udev/rules.d/99-bathyimager.rules       # Device permissions
+
+# Data and logs
+/media/usb/bathyimager/                       # Image storage
+/var/log/bathyimager/                         # Log files
+```
+
+### LED Status Quick Reference
+
+- **Green LED (GPIO 18)**: Solid = Running, Off = Stopped  
+- **Blue LED (GPIO 23)**: Solid = GPS Fix, Blink = Searching, Off = No GPS
+- **Yellow LED (GPIO 24)**: Flash = Photo Taken, SOS = Camera Error
+- **Red LED (GPIO 25)**: Off = No Errors, Blink = Warning/Error
 
 ## Acknowledgments
 

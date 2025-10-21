@@ -68,6 +68,7 @@ class LEDState(Enum):
     SLOW_BLINK = 2
     FAST_BLINK = 3
     HEARTBEAT = 4
+    SOS = 5
 
 
 class LEDIndicator:
@@ -171,6 +172,47 @@ class LEDIndicator:
                     break
                 self._set_led(False)
                 if self.stop_event.wait(0.7):
+                    break
+            
+            elif self.state == LEDState.SOS:
+                # SOS pattern: ... --- ... (dot dot dot dash dash dash dot dot dot)
+                # 3 short blinks
+                for _ in range(3):
+                    self._set_led(True)
+                    if self.stop_event.wait(0.1):
+                        return
+                    self._set_led(False)
+                    if self.stop_event.wait(0.1):
+                        return
+                
+                # Brief pause
+                if self.stop_event.wait(0.2):
+                    break
+                
+                # 3 long blinks
+                for _ in range(3):
+                    self._set_led(True)
+                    if self.stop_event.wait(0.3):
+                        return
+                    self._set_led(False)
+                    if self.stop_event.wait(0.1):
+                        return
+                
+                # Brief pause
+                if self.stop_event.wait(0.2):
+                    break
+                
+                # 3 short blinks
+                for _ in range(3):
+                    self._set_led(True)
+                    if self.stop_event.wait(0.1):
+                        return
+                    self._set_led(False)
+                    if self.stop_event.wait(0.1):
+                        return
+                
+                # Long pause before repeating
+                if self.stop_event.wait(1.0):
                     break
             
             else:
@@ -304,7 +346,7 @@ class LEDManager:
         
         if 'power' in self.leds:
             if on:
-                self.leds['power'].set_state(LEDState.HEARTBEAT)
+                self.leds['power'].set_state(LEDState.ON)  # Solid when running normally
             else:
                 self.leds['power'].set_state(LEDState.OFF)
     
@@ -326,20 +368,24 @@ class LEDManager:
             else:
                 self.leds['gps'].set_state(LEDState.OFF)
     
-    def set_camera_status(self, active: bool, capturing: bool = False) -> None:
+    def set_camera_status(self, active: bool, capturing: bool = False, error: bool = False) -> None:
         """
         Set camera status indicator.
         
         Args:
             active: True if camera is active, False otherwise
             capturing: True if currently capturing image, False otherwise
+            error: True if camera has error condition, False otherwise
         """
         self.system_states['camera_active'] = active
         self.system_states['capturing'] = capturing
         
         if 'camera' in self.leds:
-            if capturing:
-                self.leds['camera'].set_state(LEDState.FAST_BLINK)
+            if error:
+                self.leds['camera'].set_state(LEDState.SOS)
+            elif capturing:
+                # Brief flash handled by signal_capture method
+                self.leds['camera'].set_state(LEDState.ON)
             elif active:
                 self.leds['camera'].set_state(LEDState.ON)
             else:
@@ -399,7 +445,7 @@ class LEDManager:
             self.set_gps_status(False, acquiring=False)
         
         # Update camera status
-        self.set_camera_status(camera_healthy)
+        self.set_camera_status(camera_healthy, error=not camera_healthy)
         
         # Update error status
         error_condition = not (camera_healthy and gps_healthy and storage_healthy)
@@ -492,7 +538,11 @@ def test_leds(config: Dict[str, Any]) -> bool:
         led_manager.signal_capture()  # Capture flash
         time.sleep(1)
         led_manager.set_camera_status(True, capturing=True)  # Capturing
-        time.sleep(2)
+        time.sleep(1)
+        led_manager.set_camera_status(False, error=True)  # Camera error (SOS)
+        time.sleep(5)  # Let SOS pattern play
+        led_manager.set_camera_status(True)  # Back to normal
+        time.sleep(1)
         
         # Test error states
         led_manager.set_error_condition(True, critical=False)  # Warning
