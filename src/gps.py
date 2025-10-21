@@ -101,6 +101,11 @@ class GPS:
         self.fix_count = 0
         self.sentence_count = 0
         
+        # Time synchronization state
+        self.last_time_sync = 0
+        self.time_sync_interval = 300  # Sync every 5 minutes
+        self.system_time_synced = False
+        
         # Threading for continuous GPS reading
         self.read_thread: Optional[threading.Thread] = None
         self.stop_event = threading.Event()
@@ -272,10 +277,12 @@ class GPS:
         # RMC also contains position data and can be used for time sync
         if self.time_sync and rmc.datestamp and rmc.timestamp:
             try:
-                # System time synchronization could be implemented here
-                # For now, just log the GPS time for reference
                 gps_datetime = datetime.combine(rmc.datestamp, rmc.timestamp)
                 self.logger.debug(f"GPS time: {gps_datetime}")
+                
+                # Perform system time synchronization if needed
+                self._sync_system_time(gps_datetime)
+                
             except Exception as e:
                 self.logger.debug(f"Error processing RMC time: {e}")
     
@@ -286,6 +293,62 @@ class GPS:
             mode_map = {'1': 'NO_FIX', '2': '2D', '3': '3D'}
             fix_mode = mode_map.get(str(gsa.mode_fix_type), 'UNKNOWN')
             self.current_fix.fix_mode = fix_mode
+    
+    def _sync_system_time(self, gps_datetime: datetime) -> None:
+        """
+        Synchronize system time with GPS time.
+        
+        Args:
+            gps_datetime: GPS datetime (UTC)
+        """
+        try:
+            # Only sync if we haven't synced recently (avoid excessive sync attempts)
+            current_time = time.time()
+            if current_time - self.last_time_sync < self.time_sync_interval:
+                return
+            
+            # Convert GPS time to UTC timestamp
+            gps_utc = gps_datetime.replace(tzinfo=None)  # GPS time is already UTC
+            gps_timestamp = gps_utc.timestamp()
+            
+            # Get current system time
+            system_timestamp = time.time()
+            time_diff = abs(gps_timestamp - system_timestamp)
+            
+            # Only sync if difference is significant (> 1 second)
+            if time_diff > 1.0:
+                try:
+                    # Import subprocess only when needed
+                    import subprocess
+                    
+                    # Format GPS time for system date command
+                    # Using date command format: MMDDhhmmYYYY.ss
+                    date_str = gps_utc.strftime("%m%d%H%M%Y.%S")
+                    
+                    # Set system date (requires sudo privileges)
+                    result = subprocess.run(['sudo', 'date', date_str], 
+                                          capture_output=True, text=True, timeout=10)
+                    
+                    if result.returncode == 0:
+                        self.logger.info(f"System time synchronized with GPS: {gps_utc} (diff: {time_diff:.1f}s)")
+                        self.system_time_synced = True
+                    else:
+                        self.logger.warning(f"Failed to set system time: {result.stderr}")
+                        
+                except subprocess.TimeoutExpired:
+                    self.logger.warning("System time sync command timed out")
+                except FileNotFoundError:
+                    self.logger.warning("System date command not available")
+                except Exception as e:
+                    self.logger.warning(f"Could not sync system time: {e}")
+            else:
+                self.logger.debug(f"System time already accurate (diff: {time_diff:.1f}s)")
+                self.system_time_synced = True
+            
+            self.last_time_sync = current_time
+            
+        except Exception as e:
+            self.logger.warning(f"Error in time synchronization: {e}")
     
     def get_current_fix(self) -> Optional[GPSFix]:
         """
@@ -339,6 +402,9 @@ class GPS:
             'fix_count': self.fix_count,
             'last_fix_time': self.last_fix_time,
             'require_fix': self.require_fix,
+            'time_sync_enabled': self.time_sync,
+            'system_time_synced': self.system_time_synced,
+            'last_time_sync': self.last_time_sync,
             'current_fix': self.current_fix.to_dict() if self.current_fix else None
         }
         

@@ -166,7 +166,7 @@ class ImageProcessor:
     
     def _add_timestamp_metadata(self, exif_dict: Dict, timestamp: datetime) -> None:
         """Add timestamp to EXIF metadata."""
-        # Format timestamp for EXIF
+        # Format timestamp for EXIF (EXIF standard uses local time format)
         dt_str = timestamp.strftime("%Y:%m:%d %H:%M:%S")
         
         # Add to various EXIF fields
@@ -179,6 +179,24 @@ class ImageProcessor:
         exif_dict['Exif'][piexif.ExifIFD.SubSecTime] = subsec
         exif_dict['Exif'][piexif.ExifIFD.SubSecTimeOriginal] = subsec
         exif_dict['Exif'][piexif.ExifIFD.SubSecTimeDigitized] = subsec
+        
+        # Add timezone offset info if possible (custom field for UTC indication)
+        # Note: Standard EXIF doesn't have timezone, but we can add it as a comment
+        if hasattr(timestamp, 'tzinfo') and timestamp.tzinfo is None:
+            # Likely UTC time from GPS sync
+            timezone_comment = "UTC (GPS synchronized)"
+        else:
+            # Local system time
+            timezone_comment = "Local system time"
+        
+        # Add timezone information to UserComment (UTF-8 encoded)
+        try:
+            comment_bytes = timezone_comment.encode('utf-8')
+            # EXIF UserComment format: encoding + comment
+            user_comment = b'UNICODE\x00' + comment_bytes
+            exif_dict['Exif'][piexif.ExifIFD.UserComment] = user_comment
+        except Exception as e:
+            self.logger.debug(f"Could not add timezone comment: {e}")
     
     def _add_gps_metadata(self, exif_dict: Dict, gps_fix: GPSFix) -> None:
         """Add GPS coordinates to EXIF metadata."""

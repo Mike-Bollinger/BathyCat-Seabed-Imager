@@ -212,6 +212,10 @@ class BathyCatService:
             if self.gps.connect() and self.gps.start_reading():
                 self.component_health['gps'] = True
                 self.logger.info("GPS system ready")
+                if self.gps.time_sync:
+                    self.logger.info("GPS time synchronization enabled - system time will be synced when GPS fix acquired")
+                else:
+                    self.logger.info("GPS time synchronization disabled - using local system time")
             else:
                 self.logger.warning("GPS initialization failed")
                 if self.require_gps_fix:
@@ -372,8 +376,8 @@ class BathyCatService:
                     self.logger.debug("Skipping capture - no valid GPS fix")
                     return False
             
-            # Process image with metadata
-            timestamp = datetime.now()
+            # Process image with metadata - use GPS time if available and synced
+            timestamp = self._get_accurate_timestamp(gps_fix)
             processed_image = self.image_processor.process_frame(frame, gps_fix, timestamp)
             
             # Save to storage
@@ -400,6 +404,34 @@ class BathyCatService:
             # Reset camera LED status
             if self.led_manager:
                 self.led_manager.set_camera_status(self.component_health['camera'])
+    
+    def _get_accurate_timestamp(self, gps_fix: Optional['GPSFix']) -> datetime:
+        """
+        Get accurate timestamp using GPS time when available, system time otherwise.
+        
+        Args:
+            gps_fix: Current GPS fix (can be None)
+            
+        Returns:
+            datetime: Accurate timestamp (UTC when GPS synced, local when not)
+        """
+        # Use GPS time if we have a valid fix and system is synced
+        if (gps_fix and gps_fix.is_valid and 
+            self.gps and hasattr(self.gps, 'system_time_synced') and 
+            self.gps.system_time_synced):
+            
+            # System time is GPS-synced, use current UTC time
+            timestamp = datetime.utcnow()
+            self.logger.debug("Using GPS-synchronized UTC time for image timestamp")
+            return timestamp
+        else:
+            # Fall back to local system time
+            timestamp = datetime.now()
+            if gps_fix and gps_fix.is_valid:
+                self.logger.debug("Using local system time (GPS not synced yet)")
+            else:
+                self.logger.debug("Using local system time (no GPS fix)")
+            return timestamp
     
     def _check_component_health(self) -> None:
         """Check health of all system components."""

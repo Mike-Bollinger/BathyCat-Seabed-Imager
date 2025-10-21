@@ -387,9 +387,6 @@ class LEDManager:
         if 'camera' in self.leds:
             if error:
                 self.leds['camera'].set_state(LEDState.SOS)
-            elif capturing:
-                # Always use individual capture blinks - fast pattern was too confusing
-                self.signal_capture()
             elif active:
                 # Camera active and ready - solid ON
                 self.leds['camera'].set_state(LEDState.ON)
@@ -416,24 +413,21 @@ class LEDManager:
                 self.leds['error'].set_state(LEDState.OFF)
     
     def signal_capture(self) -> None:
-        """Signal that an image capture occurred with 250ms OFF blink."""
+        """Signal that an image capture occurred."""
         if 'camera' in self.leds:
-            # Always use individual OFF blinks for clear capture indication
+            # Brief flash to indicate capture
             threading.Thread(target=self._capture_flash, daemon=True).start()
     
     def _capture_flash(self) -> None:
-        """250ms OFF blink to indicate image capture."""
+        """Brief flash to indicate image capture."""
         try:
             if 'camera' in self.leds:
+                # Brief flash: OFF -> ON -> back to previous state
                 original_state = self.leds['camera'].state
-                
-                # Always use 250ms OFF blink for clear visibility
-                off_duration = 0.25  # 250ms
-                self.logger.debug(f"Capture flash: {off_duration*1000}ms OFF blink")
-                
-                # Execute OFF blink
                 self.leds['camera'].set_state(LEDState.OFF)
-                time.sleep(off_duration)
+                time.sleep(0.1)  # 100ms flash
+                self.leds['camera'].set_state(LEDState.ON)
+                time.sleep(0.1)  # 100ms flash  
                 self.leds['camera'].set_state(original_state)
                 
         except Exception as e:
