@@ -1,0 +1,17 @@
+# Udev rules for BathyImager hardware access
+# This file should be placed in /etc/udev/rules.d/99-bathyimager.rules
+
+# Camera devices - give video group access
+SUBSYSTEM=="video4linux", GROUP="video", MODE="0664"
+
+# USB Serial devices (GPS) - give dialout group access  
+SUBSYSTEM=="tty", ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", GROUP="dialout", MODE="0664"
+SUBSYSTEM=="tty", KERNEL=="ttyUSB*", GROUP="dialout", MODE="0664"
+SUBSYSTEM=="tty", KERNEL=="ttyACM*", GROUP="dialout", MODE="0664"
+
+# GPIO memory access
+SUBSYSTEM=="bcm2835-gpiomem", GROUP="gpio", MODE="0664"
+KERNEL=="gpiomem", GROUP="gpio", MODE="0664"
+
+# Memory device access (for GPIO fallback)
+KERNEL=="mem", GROUP="gpio", MODE="0664"

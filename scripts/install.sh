@@ -444,73 +444,71 @@ EOF
 
 # Function to create systemd service
 create_systemd_service() {
-    print_status "Creating systemd service..."
+    print_status "Installing systemd service..."
     
-    cat > "/etc/systemd/system/$SERVICE_NAME.service" << EOF
-[Unit]
-Description=BathyImager Seabed Imager
-Documentation=https://github.com/Mike-Bollinger/BathyImager-Seabed-Imager
-After=network.target multi-user.target
-Wants=network.target
-StartLimitIntervalSec=300
-StartLimitBurst=5
-
-[Service]
-Type=simple
-User=$INSTALL_USER
-Group=$INSTALL_USER
-WorkingDirectory=$PROJECT_DIR/src
-Environment=PYTHONPATH=$PROJECT_DIR/src
-Environment=PYTHONUNBUFFERED=1
-ExecStartPre=/bin/sleep 10
-ExecStart=$PROJECT_DIR/run_bathyimager.sh
-ExecReload=/bin/kill -HUP \$MAINPID
-KillMode=mixed
-KillSignal=SIGTERM
-TimeoutStopSec=30
-Restart=on-failure
-RestartSec=10
-StandardOutput=syslog
-StandardError=syslog
-SyslogIdentifier=bathyimager
-
-# Security settings
-NoNewPrivileges=true
-ProtectHome=false
-ProtectSystem=strict
-ReadWritePaths=$PROJECT_DIR $LOG_DIR /media /mnt /dev
-PrivateTmp=true
-ProtectKernelTunables=true
-ProtectKernelModules=true
-ProtectControlGroups=true
-RestrictRealtime=true
-RestrictSUIDSGID=true
-LockPersonality=true
-RemoveIPC=true
-
-# Hardware access for camera and GPS
-DeviceAllow=/dev/video* rw
-DeviceAllow=/dev/ttyUSB* rw
-DeviceAllow=/dev/ttyACM* rw
-DeviceAllow=/dev/serial* rw
-DevicePolicy=closed
-
-# Resource limits
-MemoryLimit=512M
-CPUQuota=50%
-
-# Watchdog
-WatchdogSec=60
-
-[Install]
-WantedBy=multi-user.target
-Alias=bathyimager-service.service
-EOF
+    # Copy the updated service file from our scripts directory
+    if [ -f "$PROJECT_DIR/scripts/bathyimager.service" ]; then
+        cp "$PROJECT_DIR/scripts/bathyimager.service" "/etc/systemd/system/$SERVICE_NAME.service"
+        print_success "Service file copied from scripts directory"
+    else
+        print_error "Service file not found at $PROJECT_DIR/scripts/bathyimager.service"
+        return 1
+    fi
     
     # Reload systemd
     systemctl daemon-reload
     
-    print_success "Systemd service created"
+    print_success "Systemd service installed"
+}
+
+# Function to setup device permissions and udev rules
+setup_device_permissions() {
+    print_status "Setting up device permissions and udev rules..."
+    
+    # Install udev rules file
+    if [ -f "$PROJECT_DIR/scripts/99-bathyimager.rules" ]; then
+        cp "$PROJECT_DIR/scripts/99-bathyimager.rules" "/etc/udev/rules.d/"
+        print_success "Udev rules installed"
+    else
+        print_warning "Udev rules file not found - creating basic rules"
+        cat > "/etc/udev/rules.d/99-bathyimager.rules" << EOF
+# Basic udev rules for BathyImager hardware access
+SUBSYSTEM=="video4linux", GROUP="video", MODE="0664"
+SUBSYSTEM=="tty", KERNEL=="ttyUSB*", GROUP="dialout", MODE="0664"
+SUBSYSTEM=="tty", KERNEL=="ttyACM*", GROUP="dialout", MODE="0664"
+KERNEL=="gpiomem", GROUP="gpio", MODE="0664"
+EOF
+    fi
+    
+    # Make device permission script executable
+    if [ -f "$PROJECT_DIR/scripts/setup_device_permissions.sh" ]; then
+        chmod +x "$PROJECT_DIR/scripts/setup_device_permissions.sh"
+        print_success "Device permission script made executable"
+    fi
+    
+    # Add user to required groups if not already a member
+    print_status "Adding user to hardware access groups..."
+    usermod -a -G video,dialout,gpio,i2c,spi "$INSTALL_USER" || true
+    
+    # Reload udev rules
+    udevadm control --reload-rules && udevadm trigger
+    
+    # Set current device permissions
+    print_status "Setting current device permissions..."
+    if [ -f "$PROJECT_DIR/scripts/setup_device_permissions.sh" ]; then
+        "$PROJECT_DIR/scripts/setup_device_permissions.sh"
+    else
+        # Fallback manual permission setting
+        chmod 666 /dev/video* 2>/dev/null || true
+        chmod 666 /dev/ttyUSB* 2>/dev/null || true
+        chmod 666 /dev/ttyACM* 2>/dev/null || true
+        chmod 666 /dev/gpiomem 2>/dev/null || true
+        chgrp video /dev/video* 2>/dev/null || true
+        chgrp dialout /dev/ttyUSB* /dev/ttyACM* 2>/dev/null || true
+        chgrp gpio /dev/gpiomem 2>/dev/null || true
+    fi
+    
+    print_success "Device permissions configured"
 }
 
 # Function to configure log rotation
@@ -726,6 +724,7 @@ main() {
     install_python_dependencies
     install_bathyimager
     install_configuration
+    setup_device_permissions
     create_systemd_service
     setup_log_rotation
     setup_usb_automount

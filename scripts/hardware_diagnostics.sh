@@ -268,6 +268,101 @@ EOF
     done
 }
 
+EOF
+}
+
+# Function to test user permissions and group membership  
+test_permissions() {
+    print_header "🔐 USER PERMISSIONS & GROUPS"
+    
+    CURRENT_USER=$(whoami)
+    print_status "Current user: $CURRENT_USER"
+    
+    # Check group membership
+    print_status "Checking group membership..."
+    groups_output=$(groups $CURRENT_USER)
+    print_status "Groups: $groups_output"
+    
+    required_groups=("video" "dialout" "gpio" "i2c" "spi")
+    for group in "${required_groups[@]}"; do
+        if echo "$groups_output" | grep -q "\b$group\b"; then
+            print_success "  ✓ User is in '$group' group"
+        else
+            print_error "  ✗ User is NOT in '$group' group"
+            print_status "    Fix with: sudo usermod -a -G $group $CURRENT_USER"
+            print_status "    Then logout and login again"
+        fi
+    done
+    
+    # Test device access permissions
+    print_status "Testing device access permissions..."
+    
+    # Camera devices
+    if ls /dev/video* >/dev/null 2>&1; then
+        for device in /dev/video*; do
+            if [ -r "$device" ] && [ -w "$device" ]; then
+                print_success "  ✓ Camera $device - read/write OK"
+            else
+                print_error "  ✗ Camera $device - no access"
+                print_status "    Current permissions: $(ls -la $device)"
+            fi
+        done
+    else
+        print_warning "  No camera devices to test"
+    fi
+    
+    # GPS devices
+    gps_found=false
+    for device in /dev/ttyUSB* /dev/ttyACM*; do
+        if [ -c "$device" ] 2>/dev/null; then
+            if [ -r "$device" ] && [ -w "$device" ]; then
+                print_success "  ✓ GPS $device - read/write OK"
+            else
+                print_error "  ✗ GPS $device - no access"
+                print_status "    Current permissions: $(ls -la $device)"
+            fi
+            gps_found=true
+        fi
+    done
+    if [ "$gps_found" = false ]; then
+        print_warning "  No GPS devices to test"
+    fi
+    
+    # GPIO device
+    if [ -c "/dev/gpiomem" ]; then
+        if [ -r "/dev/gpiomem" ] && [ -w "/dev/gpiomem" ]; then
+            print_success "  ✓ GPIO /dev/gpiomem - read/write OK"
+        else
+            print_error "  ✗ GPIO /dev/gpiomem - no access"
+            print_status "    Current permissions: $(ls -la /dev/gpiomem)"
+        fi
+    else
+        print_warning "  GPIO device /dev/gpiomem not found"
+    fi
+    
+    # Check systemd service status
+    print_status "Checking BathyImager service..."
+    if systemctl is-active --quiet bathyimager 2>/dev/null; then
+        print_success "  ✓ Service is running"
+    elif systemctl is-enabled --quiet bathyimager 2>/dev/null; then
+        print_warning "  Service is enabled but not running"
+        print_status "    Try: sudo systemctl start bathyimager"
+    else
+        print_error "  Service is not enabled"
+        print_status "    Try: sudo systemctl enable bathyimager"
+    fi
+    
+    # Show recent service logs if any issues
+    if ! systemctl is-active --quiet bathyimager 2>/dev/null; then
+        print_status "Recent service logs (last 5 lines):"
+        if journalctl -u bathyimager --no-pager -n 5 >/dev/null 2>&1; then
+            journalctl -u bathyimager --no-pager -n 5 | sed 's/^/    /'
+        else
+            print_warning "    Cannot read service logs"
+        fi
+    fi
+}
+
 # Main execution
 case "${1:-all}" in
     "camera"|"cam")
@@ -282,7 +377,12 @@ case "${1:-all}" in
     "deps"|"dependencies")
         test_dependencies
         ;;
+    "permissions"|"perms")
+        test_permissions
+        ;;
     "all"|"")
+        test_permissions
+        echo
         test_dependencies
         echo
         test_camera
@@ -292,7 +392,8 @@ case "${1:-all}" in
         test_storage
         ;;
     *)
-        echo "Usage: $0 [camera|gps|storage|dependencies|all]"
+        echo "Usage: $0 [permissions|camera|gps|storage|dependencies|all]"
+        echo "  permissions - Test user permissions and group membership"
         echo "  camera      - Test camera hardware and OpenCV"
         echo "  gps         - Test GPS device and serial communication" 
         echo "  storage     - Test USB storage mounting and permissions"

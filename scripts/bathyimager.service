@@ -14,11 +14,7 @@ WorkingDirectory=/home/bathyimager/BathyCat-Seabed-Imager/src
 Environment=PYTHONPATH=/home/bathyimager/BathyCat-Seabed-Imager/src
 Environment=PYTHONUNBUFFERED=1
 ExecStartPre=/bin/sleep 10
-ExecStartPre=/bin/bash -c 'chmod 666 /dev/video* 2>/dev/null || true'
-ExecStartPre=/bin/bash -c 'chmod 666 /dev/ttyUSB* 2>/dev/null || true'
-ExecStartPre=/bin/bash -c 'chmod 666 /dev/ttyACM* 2>/dev/null || true'
-ExecStartPre=/bin/bash -c 'chmod 666 /dev/gpiomem 2>/dev/null || true'
-ExecStartPre=/bin/bash -c 'chmod 666 /dev/mem 2>/dev/null || true'
+ExecStartPre=+/home/bathyimager/BathyCat-Seabed-Imager/scripts/setup_device_permissions.sh
 ExecStart=/home/bathyimager/BathyCat-Seabed-Imager/run_bathyimager.sh
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=mixed
@@ -50,8 +46,8 @@ MemoryMax=1G
 TasksMax=100
 
 # Capability restrictions (allow hardware access)
-CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN CAP_SETGID CAP_SETUID CAP_SYS_RAWIO CAP_SYS_ADMIN
-AmbientCapabilities=CAP_DAC_OVERRIDE CAP_FOWNER CAP_SYS_RAWIO
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN CAP_SETGID CAP_SETUID CAP_SYS_RAWIO CAP_SYS_ADMIN CAP_MKNOD
+AmbientCapabilities=CAP_DAC_OVERRIDE CAP_FOWNER CAP_SYS_RAWIO CAP_MKNOD
 
 # Device access (for camera, GPS, and GPIO) 
 DeviceAllow=/dev/video* rw
