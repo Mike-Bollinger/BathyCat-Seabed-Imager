@@ -387,7 +387,7 @@ class LEDManager:
                 # Signal capture with brief flash instead of solid LED
                 self.signal_capture()
             elif active:
-                self.leds['camera'].set_state(LEDState.OFF)  # OFF when active but not capturing
+                self.leds['camera'].set_state(LEDState.HEARTBEAT)  # Heartbeat when active and ready
             else:
                 self.leds['camera'].set_state(LEDState.OFF)
     
@@ -417,12 +417,13 @@ class LEDManager:
             threading.Thread(target=self._capture_flash, daemon=True).start()
     
     def _capture_flash(self) -> None:
-        """Brief flash for image capture indication."""
+        """Enhanced capture flash - longer and more visible than heartbeat."""
         try:
             if 'camera' in self.leds:
                 original_state = self.leds['camera'].state
+                # Longer, brighter flash to distinguish from heartbeat
                 self.leds['camera'].set_state(LEDState.ON)
-                time.sleep(0.05)  # 50ms flash
+                time.sleep(0.2)  # 200ms flash (4x longer than original)
                 self.leds['camera'].set_state(original_state)
         except Exception as e:
             self.logger.debug(f"Capture flash error: {e}")
