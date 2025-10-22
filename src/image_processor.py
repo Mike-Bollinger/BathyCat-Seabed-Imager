@@ -130,23 +130,29 @@ class ImageProcessor:
             # Add timestamp (always add this)
             self._add_timestamp_metadata(exif_dict, timestamp)
             
-            # Add GPS data if available - be more permissive and informative
+            # Add GPS data - always tag with coordinates (real GPS or 0,0 fallback)
             gps_added = False
-            if gps_fix:
-                # Check if we have basic coordinate data, even if not "valid" by strict standards
-                if (gps_fix.latitude != 0 and gps_fix.longitude != 0 and
-                    -90 <= gps_fix.latitude <= 90 and -180 <= gps_fix.longitude <= 180):
+            if gps_fix and gps_fix.is_valid:
+                # Use real GPS coordinates when we have a valid fix
+                if (-90 <= gps_fix.latitude <= 90 and -180 <= gps_fix.longitude <= 180):
                     try:
                         self._add_gps_metadata(exif_dict, gps_fix)
-                        valid_status = "VALID" if gps_fix.is_valid else "PARTIAL"
-                        self.logger.info(f"GPS metadata added ({valid_status}): {gps_fix.latitude:.6f}, {gps_fix.longitude:.6f} - Quality:{gps_fix.fix_quality}, Sats:{gps_fix.satellites}")
+                        self.logger.info(f"GPS metadata added (REAL): {gps_fix.latitude:.6f}, {gps_fix.longitude:.6f} - Quality:{gps_fix.fix_quality}, Sats:{gps_fix.satellites}")
                         gps_added = True
                     except Exception as e:
-                        self.logger.warning(f"Failed to add GPS metadata: {e}")
-                else:
-                    self.logger.warning(f"GPS coordinates invalid or zero - quality:{gps_fix.fix_quality}, sats:{gps_fix.satellites}, coords:({gps_fix.latitude:.6f},{gps_fix.longitude:.6f})")
-            else:
-                self.logger.info("No GPS fix available - image will not have GPS coordinates")
+                        self.logger.warning(f"Failed to add real GPS metadata: {e}")
+                        
+            if not gps_added:
+                # Fallback: Tag with 0°N, 0°W when no GPS available or invalid
+                try:
+                    self._add_fallback_gps_metadata(exif_dict, timestamp)
+                    if gps_fix:
+                        self.logger.info(f"GPS metadata added (FALLBACK 0°N,0°W): GPS available but invalid - quality:{gps_fix.fix_quality}, sats:{gps_fix.satellites}, coords:({gps_fix.latitude:.6f},{gps_fix.longitude:.6f})")
+                    else:
+                        self.logger.info("GPS metadata added (FALLBACK 0°N,0°W): No GPS fix available")
+                    gps_added = True
+                except Exception as e:
+                    self.logger.warning(f"Failed to add fallback GPS metadata: {e}")
             
             # Add camera/software information
             self._add_software_metadata(exif_dict)
@@ -278,6 +284,62 @@ class ImageProcessor:
             
         except Exception as e:
             self.logger.warning(f"Could not add GPS metadata: {e}")
+    
+    def _add_fallback_gps_metadata(self, exif_dict: Dict, timestamp: datetime) -> None:
+        """
+        Add fallback GPS coordinates (0°N, 0°W) when real GPS is unavailable.
+        
+        This ensures all images have GPS metadata for troubleshooting purposes.
+        Location 0°N, 0°W is in the Gulf of Guinea off the coast of West Africa,
+        making it easy to identify as a fallback coordinate.
+        
+        Args:
+            exif_dict: EXIF dictionary to modify
+            timestamp: Current timestamp to use for GPS time
+        """
+        try:
+            # Fallback coordinates: 0°N, 0°W (Null Island)
+            latitude = 0.0
+            longitude = 0.0
+            
+            # Convert to degrees, minutes, seconds format
+            lat_dms = self._decimal_to_dms(abs(latitude))  # (0, 0, 0)
+            lon_dms = self._decimal_to_dms(abs(longitude))  # (0, 0, 0)
+            
+            # GPS reference (N/S, E/W) 
+            lat_ref = 'N'  # 0° North
+            lon_ref = 'W'  # 0° West (to distinguish from real equator/prime meridian readings)
+            
+            # Build fallback GPS EXIF data
+            gps_exif = {
+                piexif.GPSIFD.GPSVersionID: (2, 0, 0, 0),
+                piexif.GPSIFD.GPSLatitudeRef: lat_ref,
+                piexif.GPSIFD.GPSLatitude: lat_dms,
+                piexif.GPSIFD.GPSLongitudeRef: lon_ref,
+                piexif.GPSIFD.GPSLongitude: lon_dms,
+                piexif.GPSIFD.GPSMapDatum: "WGS-84",
+            }
+            
+            # Use current timestamp for GPS time
+            time_rational = (
+                self._float_to_rational(timestamp.hour),
+                self._float_to_rational(timestamp.minute),
+                self._float_to_rational(timestamp.second + timestamp.microsecond / 1000000)
+            )
+            gps_exif[piexif.GPSIFD.GPSTimeStamp] = time_rational
+            
+            # GPS date from timestamp
+            date_str = timestamp.strftime("%Y:%m:%d")
+            gps_exif[piexif.GPSIFD.GPSDateStamp] = date_str
+            
+            # Indicate this is fallback data
+            gps_exif[piexif.GPSIFD.GPSSatellites] = "0"  # 0 satellites = fallback
+            gps_exif[piexif.GPSIFD.GPSMeasureMode] = '1'  # No fix
+            
+            exif_dict['GPS'] = gps_exif
+            
+        except Exception as e:
+            self.logger.warning(f"Could not add fallback GPS metadata: {e}")
     
     def _add_software_metadata(self, exif_dict: Dict) -> None:
         """Add software/camera information to EXIF metadata."""
