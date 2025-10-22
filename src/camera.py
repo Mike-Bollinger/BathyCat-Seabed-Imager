@@ -113,23 +113,58 @@ class Camera:
         # Set FPS
         self.cap.set(cv2.CAP_PROP_FPS, self.fps)
         
-        # Configure exposure
+        # Configure exposure - try multiple methods as OpenCV constants vary
         if self.auto_exposure:
-            self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)  # Enable auto exposure
-            self.logger.info("Camera auto-exposure ENABLED")
+            # Try different auto-exposure values as they vary by camera and OpenCV version
+            tried_values = []
+            
+            # Method 1: Standard values
+            self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)
+            auto_exp_val = self.cap.get(cv2.CAP_PROP_AUTO_EXPOSURE)
+            tried_values.append(f"0.75→{auto_exp_val}")
+            
+            # Method 2: If 0.75 didn't work, try 1
+            if abs(auto_exp_val - 0.75) > 0.01:
+                self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1.0)
+                auto_exp_val = self.cap.get(cv2.CAP_PROP_AUTO_EXPOSURE)
+                tried_values.append(f"1.0→{auto_exp_val}")
+                
+            # Method 3: If neither worked, try 3 (some cameras use this)
+            if auto_exp_val in [0, 0.25]:
+                self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3.0)
+                auto_exp_val = self.cap.get(cv2.CAP_PROP_AUTO_EXPOSURE)
+                tried_values.append(f"3.0→{auto_exp_val}")
+            
+            self.logger.info(f"Camera auto-exposure ENABLED (tried: {', '.join(tried_values)})")
+            
+            # Also try to disable manual exposure controls that might override auto
+            try:
+                self.cap.set(cv2.CAP_PROP_EXPOSURE, -1)  # Let camera decide
+            except:
+                pass
         else:
-            self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # Manual exposure
+            # Manual exposure - be more explicit about disabling auto first
+            self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # Disable auto
+            time.sleep(0.1)  # Brief pause for camera to switch modes
             self.cap.set(cv2.CAP_PROP_EXPOSURE, self.exposure)
-            self.logger.info(f"Camera manual exposure set to {self.exposure}")
+            actual_exposure = self.cap.get(cv2.CAP_PROP_EXPOSURE)
+            self.logger.info(f"Camera manual exposure set to {self.exposure} (got: {actual_exposure})")
         
-        # Configure white balance
+        # Configure white balance with better error handling
         if self.auto_white_balance:
-            self.cap.set(cv2.CAP_PROP_AUTO_WB, 1)  # Enable auto white balance
-            self.logger.info("Camera auto-white balance ENABLED")
+            self.cap.set(cv2.CAP_PROP_AUTO_WB, 1)
+            actual_auto_wb = self.cap.get(cv2.CAP_PROP_AUTO_WB)
+            
+            if actual_auto_wb == 1:
+                self.logger.info("Camera auto-white balance ENABLED")
+            else:
+                self.logger.warning(f"Auto white balance may not be supported (set: 1, got: {actual_auto_wb})")
         else:
-            self.cap.set(cv2.CAP_PROP_AUTO_WB, 0)  # Disable auto white balance
+            self.cap.set(cv2.CAP_PROP_AUTO_WB, 0)  # Disable auto WB
+            time.sleep(0.1)  # Brief pause 
             self.cap.set(cv2.CAP_PROP_WB_TEMPERATURE, self.white_balance)
-            self.logger.info(f"Camera manual white balance set to {self.white_balance}K")
+            actual_wb_temp = self.cap.get(cv2.CAP_PROP_WB_TEMPERATURE)
+            self.logger.info(f"Camera manual white balance set to {self.white_balance}K (got: {actual_wb_temp}K)")
         
         # Set other properties if supported
         try:
@@ -138,8 +173,17 @@ class Camera:
         except Exception as e:
             self.logger.debug(f"Could not set contrast/saturation: {e}")
         
+        # Add overexposure protection - reduce gain if supported
+        try:
+            self.cap.set(cv2.CAP_PROP_GAIN, 0)  # Minimize gain to prevent overexposure
+        except Exception as e:
+            self.logger.debug(f"Could not set gain: {e}")
+        
         # Log actual settings after configuration
         self._log_camera_properties()
+        
+        # Test for overexposure after initial configuration
+        self._check_for_overexposure()
     
     def _log_camera_properties(self) -> None:
         """Log actual camera properties for debugging."""
@@ -172,6 +216,62 @@ class Camera:
             
         except Exception as e:
             self.logger.debug(f"Could not read camera properties: {e}")
+    
+    def _check_for_overexposure(self) -> None:
+        """Check for overexposure and attempt automatic correction."""
+        if not self.cap:
+            return
+        
+        try:
+            # Wait for camera to stabilize after configuration changes
+            time.sleep(2)
+            
+            # Capture test frame
+            ret, frame = self.cap.read()
+            if not ret or frame is None:
+                self.logger.debug("Could not capture test frame for exposure check")
+                return
+            
+            # Calculate mean brightness
+            mean_brightness = np.mean(frame)
+            self.logger.info(f"Initial camera brightness: {mean_brightness:.1f}/255")
+            
+            # Check for severe overexposure (completely white images)
+            if mean_brightness > 250:
+                self.logger.warning("Camera appears severely OVEREXPOSED - attempting correction")
+                
+                # Try to fix overexposure
+                if self.auto_exposure:
+                    # In auto mode, try reducing exposure bias or switching to manual
+                    self.logger.info("Switching to manual exposure to fix overexposure")
+                    self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # Manual
+                    self.cap.set(cv2.CAP_PROP_EXPOSURE, -10)  # Very low exposure
+                    time.sleep(1)
+                    
+                    # Test again
+                    ret, frame = self.cap.read()
+                    if ret:
+                        new_brightness = np.mean(frame)
+                        self.logger.info(f"After manual exposure correction: {new_brightness:.1f}/255")
+                        
+                        if new_brightness < 240:  # Improved
+                            self.logger.info("✓ Overexposure correction successful")
+                        else:
+                            self.logger.error("❌ Still overexposed - camera may have hardware issue")
+                else:
+                    # Already in manual mode, reduce exposure further
+                    current_exposure = self.cap.get(cv2.CAP_PROP_EXPOSURE)
+                    new_exposure = current_exposure - 3  # Reduce significantly
+                    self.cap.set(cv2.CAP_PROP_EXPOSURE, new_exposure)
+                    self.logger.info(f"Reduced manual exposure from {current_exposure} to {new_exposure}")
+            
+            elif mean_brightness < 5:
+                self.logger.warning("Camera appears severely UNDEREXPOSED")
+            else:
+                self.logger.info("✓ Camera exposure appears normal")
+                
+        except Exception as e:
+            self.logger.debug(f"Error in overexposure check: {e}")
     
     def capture_frame(self) -> Optional[np.ndarray]:
         """

@@ -153,17 +153,35 @@ class ImageProcessor:
             
             # Convert EXIF dict to bytes
             try:
+                # Debug: Log EXIF contents before dumping
+                exif_summary = {}
+                for section, data in exif_dict.items():
+                    if data and isinstance(data, dict):
+                        exif_summary[section] = len(data)
+                self.logger.debug(f"EXIF sections before dump: {exif_summary}")
+                
                 exif_bytes = piexif.dump(exif_dict)
+                self.logger.debug(f"EXIF bytes created: {len(exif_bytes)} bytes")
                 
                 # Create new image with EXIF data
                 img_bytes = io.BytesIO()
                 image.save(img_bytes, format='JPEG', exif=exif_bytes)
                 img_bytes.seek(0)
                 
-                return Image.open(img_bytes)
+                # Verify EXIF was saved
+                test_img = Image.open(img_bytes)
+                if test_img.info.get('exif'):
+                    self.logger.debug("✓ EXIF data successfully embedded in image")
+                else:
+                    self.logger.warning("⚠️  EXIF data may not have been embedded properly")
+                
+                return test_img
                 
             except Exception as e:
                 self.logger.warning(f"Failed to create EXIF data, saving image without metadata: {e}")
+                # Log more details about the error
+                import traceback
+                self.logger.debug(f"EXIF error details: {traceback.format_exc()}")
                 return image
             
         except Exception as e:
