@@ -413,25 +413,20 @@ class BathyCatService:
             gps_fix: Current GPS fix (can be None)
             
         Returns:
-            datetime: Accurate timestamp (UTC when GPS synced, local when not)
+            datetime: Always returns UTC timestamp for consistency
         """
-        # Use GPS time if we have a valid fix and system is synced
+        # Always use UTC for consistency in image metadata
+        timestamp = datetime.utcnow()
+        
+        # Log the time source for debugging
         if (gps_fix and gps_fix.is_valid and 
             self.gps and hasattr(self.gps, 'system_time_synced') and 
             self.gps.system_time_synced):
-            
-            # System time is GPS-synced, use current UTC time
-            timestamp = datetime.utcnow()
-            self.logger.debug("Using GPS-synchronized UTC time for image timestamp")
-            return timestamp
+            self.logger.debug(f"Using GPS-synchronized UTC time: {timestamp.isoformat()}")
         else:
-            # Fall back to local system time
-            timestamp = datetime.now()
-            if gps_fix and gps_fix.is_valid:
-                self.logger.debug("Using local system time (GPS not synced yet)")
-            else:
-                self.logger.debug("Using local system time (no GPS fix)")
-            return timestamp
+            self.logger.debug(f"Using system UTC time (GPS not synced): {timestamp.isoformat()}")
+        
+        return timestamp
     
     def _check_component_health(self) -> None:
         """Check health of all system components."""

@@ -164,9 +164,6 @@ class ConfigValidator:
         if config.fps <= 0 or config.fps > 120:
             errors.append("Camera FPS must be between 1 and 120")
         
-        if config.jpeg_quality < 1 or config.jpeg_quality > 100:
-            errors.append("JPEG quality must be between 1 and 100")
-        
         if config.capture_timeout <= 0:
             errors.append("Camera capture timeout must be positive")
         

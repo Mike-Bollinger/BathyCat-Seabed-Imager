@@ -70,10 +70,10 @@ class Camera:
         try:
             self.logger.info(f"Initializing camera {self.device_id}")
             
-            # Try to initialize camera
-            self.cap = cv2.VideoCapture(self.device_id)
+            # Try to initialize camera with different backends and indices
+            self.cap = self._open_camera_with_fallback()
             
-            if not self.cap.isOpened():
+            if not self.cap or not self.cap.isOpened():
                 raise CameraError(f"Failed to open camera device {self.device_id}")
             
             # Configure camera settings
@@ -185,6 +185,47 @@ class Camera:
         # Test for overexposure after initial configuration
         self._check_for_overexposure()
     
+    def _open_camera_with_fallback(self) -> Optional[cv2.VideoCapture]:
+        """Try to open camera with different backends and indices."""
+        # List of (backend, description) tuples to try
+        backends_to_try = [
+            (cv2.CAP_V4L2, "V4L2"),
+            (cv2.CAP_GSTREAMER, "GStreamer"),
+            (cv2.CAP_FFMPEG, "FFmpeg"),
+            (None, "Default")  # Let OpenCV choose
+        ]
+        
+        # Try different camera indices (sometimes camera shows up on different index)
+        indices_to_try = [self.device_id, 0, 1, 2, 3]
+        if self.device_id not in indices_to_try:
+            indices_to_try.insert(0, self.device_id)
+        
+        for backend, backend_name in backends_to_try:
+            for index in indices_to_try:
+                try:
+                    self.logger.debug(f"Trying camera index {index} with {backend_name} backend")
+                    
+                    if backend is None:
+                        cap = cv2.VideoCapture(index)
+                    else:
+                        cap = cv2.VideoCapture(index, backend)
+                    
+                    if cap.isOpened():
+                        # Test if we can actually read from it
+                        ret, test_frame = cap.read()
+                        if ret and test_frame is not None:
+                            self.logger.info(f"✓ Camera opened successfully: index {index}, backend {backend_name}")
+                            self.device_id = index  # Update device_id to working index
+                            return cap
+                        else:
+                            cap.release()
+                            
+                except Exception as e:
+                    self.logger.debug(f"Failed to open camera index {index} with {backend_name}: {e}")
+                    
+        self.logger.error("Failed to open camera with any backend/index combination")
+        return None
+    
     def _log_camera_properties(self) -> None:
         """Log actual camera properties for debugging."""
         if not self.cap:
@@ -223,8 +264,8 @@ class Camera:
             return
         
         try:
-            # Wait for camera to stabilize after configuration changes
-            time.sleep(2)
+            # Use shorter delay to not block initialization
+            time.sleep(0.5)
             
             # Capture test frame
             ret, frame = self.cap.read()
@@ -238,32 +279,32 @@ class Camera:
             
             # Check for severe overexposure (completely white images)
             if mean_brightness > 250:
-                self.logger.warning("Camera appears severely OVEREXPOSED - attempting correction")
+                self.logger.warning("Camera appears severely OVEREXPOSED - attempting quick correction")
                 
-                # Try to fix overexposure
+                # Try to fix overexposure with minimal delay
                 if self.auto_exposure:
-                    # In auto mode, try reducing exposure bias or switching to manual
+                    # Switch to manual with very low exposure
                     self.logger.info("Switching to manual exposure to fix overexposure")
                     self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # Manual
                     self.cap.set(cv2.CAP_PROP_EXPOSURE, -10)  # Very low exposure
-                    time.sleep(1)
-                    
-                    # Test again
-                    ret, frame = self.cap.read()
-                    if ret:
-                        new_brightness = np.mean(frame)
-                        self.logger.info(f"After manual exposure correction: {new_brightness:.1f}/255")
-                        
-                        if new_brightness < 240:  # Improved
-                            self.logger.info("✓ Overexposure correction successful")
-                        else:
-                            self.logger.error("❌ Still overexposed - camera may have hardware issue")
                 else:
                     # Already in manual mode, reduce exposure further
                     current_exposure = self.cap.get(cv2.CAP_PROP_EXPOSURE)
-                    new_exposure = current_exposure - 3  # Reduce significantly
+                    new_exposure = min(current_exposure - 5, -10)  # Reduce significantly
                     self.cap.set(cv2.CAP_PROP_EXPOSURE, new_exposure)
                     self.logger.info(f"Reduced manual exposure from {current_exposure} to {new_exposure}")
+                
+                # Quick test without full delay
+                time.sleep(0.2)
+                ret, frame = self.cap.read()
+                if ret:
+                    new_brightness = np.mean(frame)
+                    self.logger.info(f"After exposure correction: {new_brightness:.1f}/255")
+                    
+                    if new_brightness < 240:  # Improved
+                        self.logger.info("✓ Overexposure correction appears successful")
+                    else:
+                        self.logger.error("❌ Still overexposed - may need hardware adjustment")
             
             elif mean_brightness < 5:
                 self.logger.warning("Camera appears severely UNDEREXPOSED")
