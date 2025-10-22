@@ -60,7 +60,7 @@ class ImageProcessor:
             raise ImageProcessingError(f"Unsupported image format: {self.image_format}")
     
     def process_frame(self, frame: np.ndarray, gps_fix: Optional[GPSFix] = None, 
-                     timestamp: Optional[datetime] = None) -> bytes:
+                     timestamp: Optional[datetime] = None, camera_params: Optional[Dict[str, Any]] = None) -> bytes:
         """
         Process camera frame and add metadata.
         
@@ -68,6 +68,7 @@ class ImageProcessor:
             frame: Camera frame as numpy array (BGR format from OpenCV)
             gps_fix: GPS fix data for geotagging
             timestamp: Image timestamp (uses current time if None)
+            camera_params: Camera parameters for EXIF metadata
             
         Returns:
             bytes: Processed image data
@@ -87,7 +88,7 @@ class ImageProcessor:
             
             # Add metadata if enabled
             if self.enable_metadata:
-                image = self._add_metadata(image, gps_fix, timestamp)
+                image = self._add_metadata(image, gps_fix, timestamp, camera_params)
             
             # Convert to bytes
             image_bytes = self._convert_to_bytes(image)
@@ -100,7 +101,7 @@ class ImageProcessor:
             raise ImageProcessingError(f"Frame processing failed: {e}")
     
     def _add_metadata(self, image: Image.Image, gps_fix: Optional[GPSFix], 
-                     timestamp: datetime) -> Image.Image:
+                     timestamp: datetime, camera_params: Optional[Dict[str, Any]] = None) -> Image.Image:
         """
         Add EXIF metadata to image.
         
@@ -108,6 +109,7 @@ class ImageProcessor:
             image: PIL Image object
             gps_fix: GPS fix data (can be None if GPS unavailable)
             timestamp: Image timestamp
+            camera_params: Camera parameters for EXIF metadata
             
         Returns:
             Image.Image: Image with metadata (original image if metadata fails)
@@ -154,8 +156,9 @@ class ImageProcessor:
                 except Exception as e:
                     self.logger.warning(f"Failed to add fallback GPS metadata: {e}")
             
-            # Add camera/software information
+            # Add camera/software information and actual camera parameters
             self._add_software_metadata(exif_dict)
+            self._add_camera_parameters(exif_dict, camera_params)
             
             # Convert EXIF dict to bytes
             try:
@@ -348,17 +351,150 @@ class ImageProcessor:
             exif_dict['0th'][piexif.ImageIFD.Software] = "BathyCat Seabed Imager v1.0"
             exif_dict['0th'][piexif.ImageIFD.Artist] = "BathyCat Project"
             
-            # Camera information (if not already present)
-            if piexif.ImageIFD.Make not in exif_dict['0th']:
-                exif_dict['0th'][piexif.ImageIFD.Make] = "BathyCat"
-            if piexif.ImageIFD.Model not in exif_dict['0th']:
-                exif_dict['0th'][piexif.ImageIFD.Model] = "Seabed Imager"
+            # Copyright information (as requested by user)
+            exif_dict['0th'][piexif.ImageIFD.Copyright] = "NOAA"
+            
+            # Camera information - updated per user request
+            exif_dict['0th'][piexif.ImageIFD.Make] = "BathyCat"
+            exif_dict['0th'][piexif.ImageIFD.Model] = "BathyImager"  # Updated per user request
             
             # Image description
             exif_dict['0th'][piexif.ImageIFD.ImageDescription] = "Autonomous seabed imagery"
             
         except Exception as e:
             self.logger.debug(f"Could not add software metadata: {e}")
+    
+    def _add_camera_parameters(self, exif_dict: Dict, camera_params: Optional[Dict[str, Any]]) -> None:
+        """
+        Add actual camera parameters to EXIF metadata.
+        
+        Args:
+            exif_dict: EXIF dictionary to modify
+            camera_params: Camera parameters from camera.get_camera_exif_params()
+        """
+        try:
+            if not camera_params:
+                self.logger.debug("No camera parameters provided for EXIF")
+                return
+            
+            # Image dimensions
+            if 'width' in camera_params and 'height' in camera_params:
+                exif_dict['0th'][piexif.ImageIFD.ImageWidth] = int(camera_params['width'])
+                exif_dict['0th'][piexif.ImageIFD.ImageLength] = int(camera_params['height'])
+            
+            # Camera settings in EXIF
+            if 'fps' in camera_params and camera_params['fps'] is not None:
+                # Store FPS in UserComment for reference
+                fps_info = f"FPS: {camera_params['fps']:.1f}"
+                try:
+                    existing_comment = exif_dict['Exif'].get(piexif.ExifIFD.UserComment, b'').decode('utf-8', errors='ignore')
+                    if existing_comment:
+                        fps_info = f"{existing_comment}, {fps_info}"
+                except:
+                    pass
+                
+                comment_bytes = fps_info.encode('utf-8')
+                exif_dict['Exif'][piexif.ExifIFD.UserComment] = b'UNICODE\x00' + comment_bytes
+            
+            # Exposure information
+            if 'exposure' in camera_params and camera_params['exposure'] is not None:
+                # Convert exposure to EXIF format (exposure time as rational)
+                exposure_val = float(camera_params['exposure'])
+                
+                # Handle negative exposure values (common in manual exposure)
+                if exposure_val < 0:
+                    # Convert negative log exposure to fractional time
+                    # Typical mapping: -6 -> 1/64, -10 -> 1/1024, etc.
+                    exposure_time_denominator = int(2 ** abs(exposure_val))
+                    exif_dict['Exif'][piexif.ExifIFD.ExposureTime] = (1, exposure_time_denominator)
+                    exif_dict['Exif'][piexif.ExifIFD.ShutterSpeedValue] = self._float_to_rational(abs(exposure_val))
+                elif exposure_val > 0:
+                    # Positive exposure value
+                    exif_dict['Exif'][piexif.ExifIFD.ExposureTime] = self._float_to_rational(exposure_val)
+                    exif_dict['Exif'][piexif.ExifIFD.ShutterSpeedValue] = self._float_to_rational(1.0 / max(exposure_val, 0.001))
+                
+                # Exposure mode
+                auto_exposure = camera_params.get('auto_exposure', 0)
+                if auto_exposure == 0.75:  # Auto mode
+                    exif_dict['Exif'][piexif.ExifIFD.ExposureMode] = 0  # Auto
+                    exif_dict['Exif'][piexif.ExifIFD.ExposureProgram] = 2  # Program auto
+                else:  # Manual mode (0.25)
+                    exif_dict['Exif'][piexif.ExifIFD.ExposureMode] = 1  # Manual
+                    exif_dict['Exif'][piexif.ExifIFD.ExposureProgram] = 1  # Manual
+            
+            # White balance
+            if 'auto_wb' in camera_params:
+                auto_wb = camera_params['auto_wb']
+                if auto_wb == 1:  # Auto white balance
+                    exif_dict['Exif'][piexif.ExifIFD.WhiteBalance] = 0  # Auto
+                else:  # Manual white balance
+                    exif_dict['Exif'][piexif.ExifIFD.WhiteBalance] = 1  # Manual
+                    
+                # Add white balance temperature if available
+                wb_temp = camera_params.get('wb_temperature')
+                if wb_temp and wb_temp > 0:
+                    exif_dict['Exif'][piexif.ExifIFD.ColorTemperature] = int(wb_temp)
+            
+            # Gain/ISO
+            if 'gain' in camera_params and camera_params['gain'] is not None:
+                gain_val = float(camera_params['gain'])
+                # Convert gain to approximate ISO (rough mapping)
+                iso_value = max(100, int(100 + gain_val * 10))  # Basic conversion
+                exif_dict['Exif'][piexif.ExifIFD.ISOSpeedRatings] = iso_value
+            
+            # Brightness
+            if 'brightness' in camera_params and camera_params['brightness'] is not None:
+                brightness_val = float(camera_params['brightness'])
+                exif_dict['Exif'][piexif.ExifIFD.BrightnessValue] = self._float_to_rational(brightness_val)
+            
+            # Contrast
+            if 'contrast' in camera_params and camera_params['contrast'] is not None:
+                contrast_val = float(camera_params['contrast'])
+                # Map contrast to EXIF standard (0=normal, 1=low, 2=high)
+                if contrast_val < 40:
+                    exif_dict['Exif'][piexif.ExifIFD.Contrast] = 1  # Low
+                elif contrast_val > 60:
+                    exif_dict['Exif'][piexif.ExifIFD.Contrast] = 2  # High
+                else:
+                    exif_dict['Exif'][piexif.ExifIFD.Contrast] = 0  # Normal
+            
+            # Saturation
+            if 'saturation' in camera_params and camera_params['saturation'] is not None:
+                saturation_val = float(camera_params['saturation'])
+                # Map saturation to EXIF standard (0=normal, 1=low, 2=high)
+                if saturation_val < 40:
+                    exif_dict['Exif'][piexif.ExifIFD.Saturation] = 1  # Low
+                elif saturation_val > 70:
+                    exif_dict['Exif'][piexif.ExifIFD.Saturation] = 2  # High
+                else:
+                    exif_dict['Exif'][piexif.ExifIFD.Saturation] = 0  # Normal
+            
+            # Sharpness
+            if 'sharpness' in camera_params and camera_params['sharpness'] is not None:
+                sharpness_val = float(camera_params['sharpness'])
+                # Map sharpness to EXIF standard (0=normal, 1=soft, 2=hard)
+                if sharpness_val < 40:
+                    exif_dict['Exif'][piexif.ExifIFD.Sharpness] = 1  # Soft
+                elif sharpness_val > 60:
+                    exif_dict['Exif'][piexif.ExifIFD.Sharpness] = 2  # Hard
+                else:
+                    exif_dict['Exif'][piexif.ExifIFD.Sharpness] = 0  # Normal
+            
+            # Camera backend information (custom field in MakerNote or UserComment)
+            backend = camera_params.get('backend', 'Unknown')
+            camera_format = camera_params.get('format', 'Unknown')
+            
+            # Add technical info to image description
+            tech_info = f"Backend: {backend}, Format: {camera_format}"
+            if piexif.ImageIFD.ImageDescription in exif_dict['0th']:
+                existing_desc = exif_dict['0th'][piexif.ImageIFD.ImageDescription]
+                exif_dict['0th'][piexif.ImageIFD.ImageDescription] = f"{existing_desc} ({tech_info})"
+            
+            self.logger.debug(f"Added camera parameters to EXIF: exposure={camera_params.get('exposure')}, "
+                            f"wb_temp={camera_params.get('wb_temperature')}, backend={backend}")
+            
+        except Exception as e:
+            self.logger.warning(f"Could not add camera parameters to EXIF: {e}")
     
     def _decimal_to_dms(self, decimal_degrees: float) -> Tuple[Tuple[int, int], Tuple[int, int], Tuple[int, int]]:
         """

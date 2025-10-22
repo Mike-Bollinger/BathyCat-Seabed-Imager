@@ -360,7 +360,7 @@ class Camera:
             'configured_fps': self.fps,
             'format': self.format
         }
-        
+
         if self.cap and self.is_initialized:
             try:
                 info.update({
@@ -371,8 +371,76 @@ class Camera:
                 })
             except Exception as e:
                 self.logger.debug(f"Could not get detailed camera info: {e}")
-        
+
         return info
+    
+    def get_camera_exif_params(self) -> Dict[str, Any]:
+        """
+        Get current camera parameters for EXIF metadata.
+        
+        Returns:
+            dict: Camera parameters dictionary for EXIF embedding
+        """
+        params = {}
+        
+        if not self.cap or not self.is_initialized:
+            return params
+        
+        try:
+            # Core camera settings
+            params['width'] = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            params['height'] = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            params['fps'] = self.cap.get(cv2.CAP_PROP_FPS)
+            
+            # Exposure settings
+            params['auto_exposure'] = self.cap.get(cv2.CAP_PROP_AUTO_EXPOSURE)
+            params['exposure'] = self.cap.get(cv2.CAP_PROP_EXPOSURE)
+            
+            # White balance
+            params['auto_wb'] = self.cap.get(cv2.CAP_PROP_AUTO_WB)
+            try:
+                params['wb_temperature'] = self.cap.get(cv2.CAP_PROP_WB_TEMPERATURE)
+            except:
+                params['wb_temperature'] = None
+                
+            # Image adjustment parameters
+            try:
+                params['brightness'] = self.cap.get(cv2.CAP_PROP_BRIGHTNESS)
+            except:
+                params['brightness'] = None
+                
+            try:
+                params['contrast'] = self.cap.get(cv2.CAP_PROP_CONTRAST)
+            except:
+                params['contrast'] = None
+                
+            try:
+                params['saturation'] = self.cap.get(cv2.CAP_PROP_SATURATION)
+            except:
+                params['saturation'] = None
+                
+            try:
+                params['gain'] = self.cap.get(cv2.CAP_PROP_GAIN)
+            except:
+                params['gain'] = None
+                
+            try:
+                params['sharpness'] = self.cap.get(cv2.CAP_PROP_SHARPNESS)
+            except:
+                params['sharpness'] = None
+                
+            # Camera backend and format info
+            try:
+                params['backend'] = self.cap.getBackendName()
+            except:
+                params['backend'] = "Unknown"
+                
+            params['format'] = self.format
+            
+        except Exception as e:
+            self.logger.debug(f"Error getting camera EXIF parameters: {e}")
+            
+        return params
     
     def is_healthy(self) -> bool:
         """

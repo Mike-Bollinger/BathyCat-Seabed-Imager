@@ -376,9 +376,14 @@ class BathyCatService:
                     self.logger.debug("Skipping capture - no valid GPS fix")
                     return False
             
+            # Get camera parameters for EXIF metadata
+            camera_params = None
+            if self.camera:
+                camera_params = self.camera.get_camera_exif_params()
+            
             # Process image with metadata - use GPS time if available and synced
             timestamp = self._get_accurate_timestamp(gps_fix)
-            processed_image = self.image_processor.process_frame(frame, gps_fix, timestamp)
+            processed_image = self.image_processor.process_frame(frame, gps_fix, timestamp, camera_params)
             
             # Save to storage
             filepath = self.storage.save_image(processed_image, timestamp)
