@@ -113,42 +113,48 @@ class Camera:
         # Set FPS
         self.cap.set(cv2.CAP_PROP_FPS, self.fps)
         
-        # Configure exposure - try multiple methods as OpenCV constants vary
-        if self.auto_exposure:
-            # Try different auto-exposure values as they vary by camera and OpenCV version
-            tried_values = []
-            
-            # Method 1: Standard values
-            self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)
-            auto_exp_val = self.cap.get(cv2.CAP_PROP_AUTO_EXPOSURE)
-            tried_values.append(f"0.75→{auto_exp_val}")
-            
-            # Method 2: If 0.75 didn't work, try 1
-            if abs(auto_exp_val - 0.75) > 0.01:
-                self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1.0)
-                auto_exp_val = self.cap.get(cv2.CAP_PROP_AUTO_EXPOSURE)
-                tried_values.append(f"1.0→{auto_exp_val}")
-                
-            # Method 3: If neither worked, try 3 (some cameras use this)
-            if auto_exp_val in [0, 0.25]:
-                self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3.0)
-                auto_exp_val = self.cap.get(cv2.CAP_PROP_AUTO_EXPOSURE)
-                tried_values.append(f"3.0→{auto_exp_val}")
-            
-            self.logger.info(f"Camera auto-exposure ENABLED (tried: {', '.join(tried_values)})")
-            
-            # Also try to disable manual exposure controls that might override auto
-            try:
-                self.cap.set(cv2.CAP_PROP_EXPOSURE, -1)  # Let camera decide
-            except:
-                pass
-        else:
-            # Manual exposure - be more explicit about disabling auto first
-            self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # Disable auto
-            time.sleep(0.1)  # Brief pause for camera to switch modes
-            self.cap.set(cv2.CAP_PROP_EXPOSURE, self.exposure)
+        # Configure exposure - EMERGENCY FIX for severely overexposed camera (brightness 254.3)
+        # Tests showed this camera doesn't respond to OpenCV exposure controls properly
+        
+        # ALWAYS try manual mode first due to severe overexposure
+        self.logger.warning("Forcing manual exposure mode due to known overexposure issue")
+        self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # Force manual
+        time.sleep(0.1)
+        
+        # Try extreme exposure values since normal values don't work
+        extreme_exposure_values = [-20, -15, -10, -8, -6]
+        
+        working_exposure = None
+        for exp_val in extreme_exposure_values:
+            self.cap.set(cv2.CAP_PROP_EXPOSURE, exp_val)
+            time.sleep(0.1)
             actual_exposure = self.cap.get(cv2.CAP_PROP_EXPOSURE)
-            self.logger.info(f"Camera manual exposure set to {self.exposure} (got: {actual_exposure})")
+            
+            # Test brightness with this exposure
+            ret, test_frame = self.cap.read()
+            if ret:
+                brightness = np.mean(test_frame)
+                self.logger.debug(f"Exposure {exp_val}→{actual_exposure}: brightness {brightness:.1f}")
+                
+                if brightness < 240:  # Any improvement from 254.3
+                    working_exposure = exp_val
+                    self.logger.info(f"✓ Found working exposure: {exp_val} (brightness: {brightness:.1f})")
+                    break
+        
+        if working_exposure is None:
+            self.logger.error("❌ No exposure setting reduces overexposure - hardware issue likely")
+            # Try other properties to reduce brightness
+            try:
+                self.cap.set(cv2.CAP_PROP_GAIN, 0)         # Minimize gain
+                self.cap.set(cv2.CAP_PROP_BRIGHTNESS, 0)   # Minimize brightness
+                self.logger.info("Applied gain=0, brightness=0 to combat overexposure")
+            except Exception as e:
+                self.logger.debug(f"Could not set gain/brightness: {e}")
+        
+        # Log final exposure status
+        final_auto_exp = self.cap.get(cv2.CAP_PROP_AUTO_EXPOSURE)
+        final_exposure = self.cap.get(cv2.CAP_PROP_EXPOSURE)
+        self.logger.info(f"Final exposure settings: auto={final_auto_exp}, manual={final_exposure}")
         
         # Configure white balance with better error handling
         if self.auto_white_balance:
@@ -187,18 +193,20 @@ class Camera:
     
     def _open_camera_with_fallback(self) -> Optional[cv2.VideoCapture]:
         """Try to open camera with different backends and indices."""
-        # List of (backend, description) tuples to try
+        # Based on test results: Camera 0 works with V4L2 and Default backends
+        # Prioritize working configurations first
         backends_to_try = [
-            (cv2.CAP_V4L2, "V4L2"),
+            (cv2.CAP_V4L2, "V4L2"),      # Test showed this works for camera 0
+            (None, "Default"),            # Test showed this also works for camera 0  
             (cv2.CAP_GSTREAMER, "GStreamer"),
             (cv2.CAP_FFMPEG, "FFmpeg"),
-            (None, "Default")  # Let OpenCV choose
         ]
         
-        # Try different camera indices (sometimes camera shows up on different index)
-        indices_to_try = [self.device_id, 0, 1, 2, 3]
-        if self.device_id not in indices_to_try:
-            indices_to_try.insert(0, self.device_id)
+        # Prioritize camera 0 since tests showed it works
+        indices_to_try = [0]
+        if self.device_id != 0:
+            indices_to_try.append(self.device_id)
+        indices_to_try.extend([1, 2, 3])
         
         for backend, backend_name in backends_to_try:
             for index in indices_to_try:
@@ -214,7 +222,13 @@ class Camera:
                         # Test if we can actually read from it
                         ret, test_frame = cap.read()
                         if ret and test_frame is not None:
-                            self.logger.info(f"✓ Camera opened successfully: index {index}, backend {backend_name}")
+                            # Check if severely overexposed (test showed brightness 254.3)
+                            brightness = np.mean(test_frame)
+                            self.logger.info(f"✓ Camera opened: index {index}, backend {backend_name}, brightness: {brightness:.1f}")
+                            
+                            if brightness > 250:
+                                self.logger.warning(f"⚠️  Camera severely overexposed (brightness: {brightness:.1f}) - will attempt correction")
+                            
                             self.device_id = index  # Update device_id to working index
                             return cap
                         else:
@@ -277,39 +291,26 @@ class Camera:
             mean_brightness = np.mean(frame)
             self.logger.info(f"Initial camera brightness: {mean_brightness:.1f}/255")
             
-            # Check for severe overexposure (completely white images)
+            # Check for severe overexposure (known issue: brightness 254.3/255)
             if mean_brightness > 250:
-                self.logger.warning("Camera appears severely OVEREXPOSED - attempting quick correction")
+                self.logger.error(f"❌ SEVERE OVEREXPOSURE CONFIRMED: {mean_brightness:.1f}/255")
+                self.logger.error("This camera appears to have hardware-level overexposure")
+                self.logger.error("Recommendations:")
+                self.logger.error("1. 🔦 Reduce ambient lighting significantly")  
+                self.logger.error("2. 📦 Try different USB camera model")
+                self.logger.error("3. 🔌 Test different USB port")
+                self.logger.error("4. 🎛️  Check for physical camera controls")
                 
-                # Try to fix overexposure with minimal delay
-                if self.auto_exposure:
-                    # Switch to manual with very low exposure
-                    self.logger.info("Switching to manual exposure to fix overexposure")
-                    self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # Manual
-                    self.cap.set(cv2.CAP_PROP_EXPOSURE, -10)  # Very low exposure
-                else:
-                    # Already in manual mode, reduce exposure further
-                    current_exposure = self.cap.get(cv2.CAP_PROP_EXPOSURE)
-                    new_exposure = min(current_exposure - 5, -10)  # Reduce significantly
-                    self.cap.set(cv2.CAP_PROP_EXPOSURE, new_exposure)
-                    self.logger.info(f"Reduced manual exposure from {current_exposure} to {new_exposure}")
+                # Log that images will be white until hardware issue is resolved
+                self.logger.warning("⚠️  All captured images will be WHITE until lighting/hardware is fixed")
                 
-                # Quick test without full delay
-                time.sleep(0.2)
-                ret, frame = self.cap.read()
-                if ret:
-                    new_brightness = np.mean(frame)
-                    self.logger.info(f"After exposure correction: {new_brightness:.1f}/255")
-                    
-                    if new_brightness < 240:  # Improved
-                        self.logger.info("✓ Overexposure correction appears successful")
-                    else:
-                        self.logger.error("❌ Still overexposed - may need hardware adjustment")
-            
+            elif mean_brightness > 200:
+                self.logger.warning(f"⚠️  Camera overexposed: {mean_brightness:.1f}/255 (still too bright)")
+                
             elif mean_brightness < 5:
-                self.logger.warning("Camera appears severely UNDEREXPOSED")
+                self.logger.warning(f"⚠️  Camera severely underexposed: {mean_brightness:.1f}/255")
             else:
-                self.logger.info("✓ Camera exposure appears normal")
+                self.logger.info(f"✓ Camera exposure acceptable: {mean_brightness:.1f}/255")
                 
         except Exception as e:
             self.logger.debug(f"Error in overexposure check: {e}")
