@@ -382,19 +382,32 @@ class ImageProcessor:
                 exif_dict['0th'][piexif.ImageIFD.ImageWidth] = int(camera_params['width'])
                 exif_dict['0th'][piexif.ImageIFD.ImageLength] = int(camera_params['height'])
             
-            # Camera settings in EXIF
+            # Build camera info for UserComment
+            camera_info_parts = []
+            
+            # Add FPS
             if 'fps' in camera_params and camera_params['fps'] is not None:
-                # Store FPS in UserComment for reference
-                fps_info = f"FPS: {camera_params['fps']:.1f}"
+                camera_info_parts.append(f"FPS: {camera_params['fps']:.1f}")
+            
+            # Add white balance temperature (since ColorTemperature EXIF field isn't supported)
+            wb_temp = camera_params.get('wb_temperature')
+            if wb_temp and wb_temp > 0:
+                camera_info_parts.append(f"WB: {int(wb_temp)}K")
+            
+            # Add to UserComment if we have camera info
+            if camera_info_parts:
                 try:
-                    existing_comment = exif_dict['Exif'].get(piexif.ExifIFD.UserComment, b'').decode('utf-8', errors='ignore')
-                    if existing_comment:
-                        fps_info = f"{existing_comment}, {fps_info}"
-                except:
-                    pass
-                
-                comment_bytes = fps_info.encode('utf-8')
-                exif_dict['Exif'][piexif.ExifIFD.UserComment] = b'UNICODE\x00' + comment_bytes
+                    existing_comment = exif_dict['Exif'].get(piexif.ExifIFD.UserComment, b'')
+                    if existing_comment and existing_comment.startswith(b'UNICODE\x00'):
+                        existing_text = existing_comment[8:].decode('utf-8', errors='ignore')
+                        camera_info_text = f"{existing_text}, {', '.join(camera_info_parts)}"
+                    else:
+                        camera_info_text = ', '.join(camera_info_parts)
+                    
+                    comment_bytes = camera_info_text.encode('utf-8')
+                    exif_dict['Exif'][piexif.ExifIFD.UserComment] = b'UNICODE\x00' + comment_bytes
+                except Exception as e:
+                    self.logger.debug(f"Could not add camera info to UserComment: {e}")
             
             # Exposure information
             if 'exposure' in camera_params and camera_params['exposure'] is not None:
@@ -430,10 +443,11 @@ class ImageProcessor:
                 else:  # Manual white balance
                     exif_dict['Exif'][piexif.ExifIFD.WhiteBalance] = 1  # Manual
                     
-                # Add white balance temperature if available
+                # Note: ColorTemperature is not supported by piexif library
+                # White balance temperature will be included in UserComment instead
                 wb_temp = camera_params.get('wb_temperature')
                 if wb_temp and wb_temp > 0:
-                    exif_dict['Exif'][piexif.ExifIFD.ColorTemperature] = int(wb_temp)
+                    self.logger.debug(f"White balance temperature: {wb_temp}K (not added to EXIF - unsupported)")
             
             # Gain/ISO
             if 'gain' in camera_params and camera_params['gain'] is not None:
@@ -490,11 +504,24 @@ class ImageProcessor:
                 existing_desc = exif_dict['0th'][piexif.ImageIFD.ImageDescription]
                 exif_dict['0th'][piexif.ImageIFD.ImageDescription] = f"{existing_desc} ({tech_info})"
             
-            self.logger.debug(f"Added camera parameters to EXIF: exposure={camera_params.get('exposure')}, "
-                            f"wb_temp={camera_params.get('wb_temperature')}, backend={backend}")
+            # Log successful camera parameter addition
+            params_added = []
+            if 'exposure' in camera_params and camera_params['exposure'] is not None:
+                params_added.append(f"exposure={camera_params['exposure']}")
+            if 'auto_wb' in camera_params:
+                wb_mode = "auto" if camera_params['auto_wb'] == 1 else "manual"
+                params_added.append(f"wb_mode={wb_mode}")
+            if wb_temp and wb_temp > 0:
+                params_added.append(f"wb_temp={wb_temp}K")
+            if 'gain' in camera_params and camera_params['gain'] is not None:
+                params_added.append(f"gain={camera_params['gain']}")
+            
+            self.logger.info(f"Camera parameters added to EXIF: {', '.join(params_added) if params_added else 'basic info only'}")
             
         except Exception as e:
             self.logger.warning(f"Could not add camera parameters to EXIF: {e}")
+            import traceback
+            self.logger.debug(f"Camera parameters error details: {traceback.format_exc()}")
     
     def _decimal_to_dms(self, decimal_degrees: float) -> Tuple[Tuple[int, int], Tuple[int, int], Tuple[int, int]]:
         """
