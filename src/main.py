@@ -371,15 +371,33 @@ class BathyCatService:
             if self.gps:
                 gps_fix = self.gps.get_current_fix()
                 
+                # Log GPS status for debugging
+                if gps_fix:
+                    if gps_fix.is_valid:
+                        self.logger.debug(f"GPS: Valid fix - {gps_fix.latitude:.6f}, {gps_fix.longitude:.6f} ({gps_fix.satellites} sats)")
+                    else:
+                        self.logger.debug(f"GPS: Invalid fix - quality:{gps_fix.fix_quality}, sats:{gps_fix.satellites}")
+                else:
+                    self.logger.debug("GPS: No fix available")
+                
                 # Check if we require valid GPS fix
                 if self.require_gps_fix and (not gps_fix or not gps_fix.is_valid):
                     self.logger.debug("Skipping capture - no valid GPS fix")
                     return False
+            else:
+                self.logger.debug("GPS: System not initialized")
             
             # Get camera parameters for EXIF metadata
             camera_params = None
             if self.camera:
                 camera_params = self.camera.get_camera_exif_params()
+                if camera_params:
+                    param_count = len([v for v in camera_params.values() if v is not None])
+                    self.logger.debug(f"Camera: Extracted {param_count} parameters for EXIF")
+                else:
+                    self.logger.debug("Camera: No parameters available for EXIF")
+            else:
+                self.logger.debug("Camera: System not initialized")
             
             # Process image with metadata - use GPS time if available and synced
             timestamp = self._get_accurate_timestamp(gps_fix)

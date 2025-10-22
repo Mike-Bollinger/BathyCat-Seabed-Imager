@@ -88,7 +88,10 @@ class ImageProcessor:
             
             # Add metadata if enabled
             if self.enable_metadata:
+                self.logger.debug(f"Processing metadata - GPS: {'Yes' if gps_fix else 'No'}, Camera params: {'Yes' if camera_params else 'No'}")
                 image = self._add_metadata(image, gps_fix, timestamp, camera_params)
+            else:
+                self.logger.warning("Metadata disabled - images will have no GPS or camera data")
             
             # Convert to bytes
             image_bytes = self._convert_to_bytes(image)
@@ -560,7 +563,7 @@ class ImageProcessor:
     
     def _convert_to_bytes(self, image: Image.Image) -> bytes:
         """
-        Convert PIL Image to bytes.
+        Convert PIL Image to bytes, preserving any EXIF metadata.
         
         Args:
             image: PIL Image object
@@ -570,8 +573,17 @@ class ImageProcessor:
         """
         img_bytes = io.BytesIO()
         
+        # Extract existing EXIF data if present
+        exif_data = image.info.get('exif', b'')
+        
         if self.image_format == 'JPEG':
-            image.save(img_bytes, format='JPEG', quality=self.jpeg_quality, optimize=True)
+            # Save with EXIF data if available
+            if exif_data:
+                image.save(img_bytes, format='JPEG', quality=self.jpeg_quality, optimize=True, exif=exif_data)
+                self.logger.debug(f"✓ Saved JPEG with {len(exif_data)} bytes of EXIF data")
+            else:
+                image.save(img_bytes, format='JPEG', quality=self.jpeg_quality, optimize=True)
+                self.logger.debug("⚠️  Saved JPEG without EXIF data")
         elif self.image_format == 'PNG':
             image.save(img_bytes, format='PNG', optimize=True)
         elif self.image_format == 'TIFF':
