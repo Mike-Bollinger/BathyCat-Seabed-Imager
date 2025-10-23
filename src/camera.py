@@ -17,6 +17,8 @@ Features:
 import cv2
 import logging
 import time
+import subprocess
+import re
 from typing import Optional, Tuple, Dict, Any
 import numpy as np
 
@@ -190,6 +192,87 @@ class Camera:
         
         # Test for overexposure after initial configuration
         self._check_for_overexposure()
+    
+    def get_usb_camera_info(self) -> Dict[str, str]:
+        """
+        Detect USB camera manufacturer and model information from system.
+        
+        Returns:
+            dict: Dictionary with 'manufacturer' and 'model' keys, 
+                  defaults to fallback values if detection fails
+        """
+        camera_info = {
+            'manufacturer': 'DeepWater Exploration',  # Fallback
+            'model': 'exploreHD 3.0'  # Fallback
+        }
+        
+        try:
+            # Try lsusb command first (most reliable on Linux)
+            result = subprocess.run(['lsusb'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                lines = result.stdout.split('\n')
+                for line in lines:
+                    # Look for video/camera devices
+                    if any(keyword in line.lower() for keyword in ['camera', 'video', 'webcam', 'usb2.0', 'hd']):
+                        # Extract manufacturer and model from lsusb output
+                        # Format: Bus 001 Device 004: ID 0bda:58b0 Realtek Semiconductor Corp. 
+                        match = re.search(r'ID\s+[0-9a-f]{4}:[0-9a-f]{4}\s+(.+)', line)
+                        if match:
+                            device_name = match.group(1).strip()
+                            self.logger.info(f"Detected USB camera: {device_name}")
+                            
+                            # Parse manufacturer and model
+                            parts = device_name.split()
+                            if len(parts) >= 2:
+                                # First part is usually manufacturer, rest is model
+                                manufacturer = parts[0]
+                                model = ' '.join(parts[1:])
+                                
+                                # Clean up common suffixes
+                                model = re.sub(r'\s+(Corp\.?|Inc\.?|Ltd\.?|Co\.?)$', '', model)
+                                
+                                camera_info['manufacturer'] = manufacturer
+                                camera_info['model'] = model
+                                
+                            break
+                            
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError):
+            self.logger.debug("lsusb command not available or failed")
+        
+        # Try alternative methods if lsusb failed
+        if camera_info['manufacturer'] == 'DeepWater Exploration':  # Still using fallback
+            try:
+                # Try v4l2-ctl to get camera info
+                result = subprocess.run(['v4l2-ctl', '--list-devices'], 
+                                      capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    lines = result.stdout.split('\n')
+                    for line in lines:
+                        if f'/dev/video{self.device_id}' in line:
+                            # Look at the line above for device name
+                            idx = lines.index(line)
+                            if idx > 0:
+                                device_name = lines[idx-1].strip()
+                                if device_name and not device_name.startswith('/dev/'):
+                                    self.logger.info(f"Detected camera via v4l2: {device_name}")
+                                    
+                                    # Parse the device name
+                                    # Remove common prefixes/suffixes
+                                    device_name = re.sub(r':\s*$', '', device_name)
+                                    device_name = re.sub(r'^\w+:\s*', '', device_name)
+                                    
+                                    parts = device_name.split()
+                                    if len(parts) >= 2:
+                                        camera_info['manufacturer'] = parts[0]
+                                        camera_info['model'] = ' '.join(parts[1:])
+                                    
+                            break
+                            
+            except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError):
+                self.logger.debug("v4l2-ctl command not available or failed")
+        
+        self.logger.info(f"Camera info: {camera_info['manufacturer']} {camera_info['model']}")
+        return camera_info
     
     def _open_camera_with_fallback(self) -> Optional[cv2.VideoCapture]:
         """Try to open camera with different backends and indices."""
@@ -436,6 +519,11 @@ class Camera:
                 params['backend'] = "Unknown"
                 
             params['format'] = self.format
+            
+            # Get actual camera manufacturer and model info
+            camera_info = self.get_usb_camera_info()
+            params['manufacturer'] = camera_info['manufacturer']
+            params['model'] = camera_info['model']
             
         except Exception as e:
             self.logger.debug(f"Error getting camera EXIF parameters: {e}")

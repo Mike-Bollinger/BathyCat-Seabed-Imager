@@ -160,7 +160,7 @@ class ImageProcessor:
                     self.logger.warning(f"Failed to add fallback GPS metadata: {e}")
             
             # Add camera/software information and actual camera parameters
-            self._add_software_metadata(exif_dict)
+            self._add_software_metadata(exif_dict, camera_params)
             self._add_camera_parameters(exif_dict, camera_params)
             
             # Convert EXIF dict to bytes
@@ -348,7 +348,7 @@ class ImageProcessor:
         except Exception as e:
             self.logger.warning(f"Could not add fallback GPS metadata: {e}")
     
-    def _add_software_metadata(self, exif_dict: Dict) -> None:
+    def _add_software_metadata(self, exif_dict: Dict, camera_params: Optional[Dict[str, Any]] = None) -> None:
         """Add software/camera information to EXIF metadata."""
         try:
             # Software information
@@ -358,9 +358,16 @@ class ImageProcessor:
             # Copyright information (as requested by user)
             exif_dict['0th'][piexif.ImageIFD.Copyright] = "NOAA"
             
-            # Camera information - updated per user request
-            exif_dict['0th'][piexif.ImageIFD.Make] = "BathyCat"
-            exif_dict['0th'][piexif.ImageIFD.Model] = "BathyImager"  # Updated per user request
+            # Camera information - use actual camera data if available, otherwise fallback
+            if camera_params and 'manufacturer' in camera_params and 'model' in camera_params:
+                exif_dict['0th'][piexif.ImageIFD.Make] = camera_params['manufacturer']
+                exif_dict['0th'][piexif.ImageIFD.Model] = camera_params['model']
+                self.logger.debug(f"Using detected camera: {camera_params['manufacturer']} {camera_params['model']}")
+            else:
+                # Fallback values
+                exif_dict['0th'][piexif.ImageIFD.Make] = "DeepWater Exploration"
+                exif_dict['0th'][piexif.ImageIFD.Model] = "exploreHD 3.0"
+                self.logger.debug("Using fallback camera info: DeepWater Exploration exploreHD 3.0")
             
             # Image description
             exif_dict['0th'][piexif.ImageIFD.ImageDescription] = "Autonomous seabed imagery"
