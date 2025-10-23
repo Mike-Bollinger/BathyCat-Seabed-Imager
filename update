@@ -202,9 +202,8 @@ fi
 
 # Fix permissions
 echo "🔒 Fixing permissions..."
-chmod +x scripts/*.sh
+chmod +x scripts/*.sh 2>/dev/null || echo "   Warning: Could not set permissions on scripts"
 chmod +x update
-chmod +x setup_dev.sh
 [ -f "run_bathyimager.sh" ] && chmod +x run_bathyimager.sh
 
 # Show new version
