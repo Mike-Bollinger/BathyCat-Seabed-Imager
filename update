@@ -204,7 +204,10 @@ fi
 echo "🔒 Fixing permissions..."
 chmod +x scripts/*.sh 2>/dev/null || echo "   Warning: Could not set permissions on scripts"
 chmod +x update
-[ -f "run_bathyimager.sh" ] && chmod +x run_bathyimager.sh
+chmod +x run_bathyimager.sh 2>/dev/null || echo "   Warning: run_bathyimager.sh not found"
+# Ensure Python files are readable
+chmod +r src/*.py 2>/dev/null || true
+chmod +r config/*.json 2>/dev/null || true
 
 # Show new version
 echo "🎉 Updated to:"

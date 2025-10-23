@@ -15,15 +15,15 @@ Environment=PYTHONPATH=/home/bathyimager/BathyCat-Seabed-Imager/src
 Environment=PYTHONUNBUFFERED=1
 ExecStartPre=/bin/sleep 10
 ExecStartPre=+/home/bathyimager/BathyCat-Seabed-Imager/scripts/setup_device_permissions.sh
-ExecStart=/home/bathyimager/BathyCat-Seabed-Imager/run_bathyimager.sh
+ExecStart=/usr/bin/python3 main.py --config ../config/bathyimager_config.json
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=mixed
 KillSignal=SIGTERM
 TimeoutStopSec=30
 Restart=on-failure
 RestartSec=10
-StandardOutput=syslog
-StandardError=syslog
+StandardOutput=journal
+StandardError=journal
 SyslogIdentifier=bathyimager
 
 # Security settings (relaxed for hardware access)
