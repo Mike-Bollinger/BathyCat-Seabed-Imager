@@ -225,11 +225,12 @@ class ImageProcessor:
             # Local system time
             timezone_comment = "Local system time"
         
-        # Add timezone information to UserComment (UTF-8 encoded)
+        # Add timezone information to UserComment (ASCII encoded for compatibility)
         try:
-            comment_bytes = timezone_comment.encode('utf-8')
-            # EXIF UserComment format: encoding + comment
-            user_comment = b'UNICODE\x00' + comment_bytes
+            # Use simple ASCII encoding to avoid display issues
+            comment_ascii = timezone_comment.encode('ascii', errors='replace')
+            # EXIF UserComment format: ASCII encoding indicator + comment
+            user_comment = b'ASCII\x00\x00\x00' + comment_ascii
             exif_dict['Exif'][piexif.ExifIFD.UserComment] = user_comment
         except Exception as e:
             self.logger.debug(f"Could not add timezone comment: {e}")
@@ -352,7 +353,7 @@ class ImageProcessor:
         try:
             # Software information
             exif_dict['0th'][piexif.ImageIFD.Software] = "BathyCat Seabed Imager v1.0"
-            exif_dict['0th'][piexif.ImageIFD.Artist] = "BathyCat Project"
+            exif_dict['0th'][piexif.ImageIFD.Artist] = "NOAA NCCOS SEA Branch :: Mike Bollinger"
             
             # Copyright information (as requested by user)
             exif_dict['0th'][piexif.ImageIFD.Copyright] = "NOAA"
@@ -401,14 +402,15 @@ class ImageProcessor:
             if camera_info_parts:
                 try:
                     existing_comment = exif_dict['Exif'].get(piexif.ExifIFD.UserComment, b'')
-                    if existing_comment and existing_comment.startswith(b'UNICODE\x00'):
-                        existing_text = existing_comment[8:].decode('utf-8', errors='ignore')
+                    if existing_comment and existing_comment.startswith(b'ASCII\x00\x00\x00'):
+                        existing_text = existing_comment[8:].decode('ascii', errors='ignore')
                         camera_info_text = f"{existing_text}, {', '.join(camera_info_parts)}"
                     else:
                         camera_info_text = ', '.join(camera_info_parts)
                     
-                    comment_bytes = camera_info_text.encode('utf-8')
-                    exif_dict['Exif'][piexif.ExifIFD.UserComment] = b'UNICODE\x00' + comment_bytes
+                    # Use ASCII encoding for better compatibility
+                    comment_ascii = camera_info_text.encode('ascii', errors='replace')
+                    exif_dict['Exif'][piexif.ExifIFD.UserComment] = b'ASCII\x00\x00\x00' + comment_ascii
                 except Exception as e:
                     self.logger.debug(f"Could not add camera info to UserComment: {e}")
             
