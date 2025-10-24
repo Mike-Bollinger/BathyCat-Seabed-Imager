@@ -215,6 +215,11 @@ install_system_dependencies() {
         setserial \
         usbutils
     
+    # Time synchronization and GPS support
+    apt-get install -y \
+        systemd-timesyncd \
+        tzdata
+    
     # System utilities
     apt-get install -y \
         systemd \
@@ -444,21 +449,44 @@ EOF
 
 # Function to create systemd service
 create_systemd_service() {
-    print_status "Installing systemd service..."
+    print_status "Installing systemd services..."
     
-    # Copy the updated service file from our scripts directory
+    # Copy the main BathyImager service file
     if [ -f "$PROJECT_DIR/scripts/bathyimager.service" ]; then
         cp "$PROJECT_DIR/scripts/bathyimager.service" "/etc/systemd/system/$SERVICE_NAME.service"
-        print_success "Service file copied from scripts directory"
+        print_success "BathyImager service file installed"
     else
         print_error "Service file not found at $PROJECT_DIR/scripts/bathyimager.service"
         return 1
     fi
     
+    # Copy the GPS boot sync service file
+    if [ -f "$PROJECT_DIR/scripts/gps-boot-sync.service" ]; then
+        cp "$PROJECT_DIR/scripts/gps-boot-sync.service" /etc/systemd/system/
+        print_success "GPS boot sync service file installed"
+    else
+        print_warning "GPS boot sync service file not found - GPS time synchronization will not be available"
+    fi
+    
+    # Copy GPS periodic sync service and timer files
+    if [ -f "$PROJECT_DIR/scripts/gps-periodic-sync.service" ]; then
+        cp "$PROJECT_DIR/scripts/gps-periodic-sync.service" /etc/systemd/system/
+        print_success "GPS periodic sync service file installed"
+    else
+        print_warning "GPS periodic sync service file not found"
+    fi
+    
+    if [ -f "$PROJECT_DIR/scripts/gps-periodic-sync.timer" ]; then
+        cp "$PROJECT_DIR/scripts/gps-periodic-sync.timer" /etc/systemd/system/
+        print_success "GPS periodic sync timer file installed"
+    else
+        print_warning "GPS periodic sync timer file not found"
+    fi
+    
     # Reload systemd
     systemctl daemon-reload
     
-    print_success "Systemd service installed"
+    print_success "Systemd services installed"
 }
 
 # Function to setup device permissions and udev rules
@@ -630,14 +658,27 @@ except Exception as e:
     print_success "System tests completed"
 }
 
-# Function to enable and start service
+# Function to enable and start services
 enable_service() {
-    print_status "Enabling and starting BathyImager imaging service..."
+    print_status "Enabling and starting BathyImager services..."
     
-    # Enable service
+    # Enable GPS boot sync service (if available)
+    if [ -f "/etc/systemd/system/gps-boot-sync.service" ]; then
+        systemctl enable gps-boot-sync
+        print_success "GPS boot sync service enabled"
+    fi
+    
+    # Enable GPS periodic sync timer (if available)
+    if [ -f "/etc/systemd/system/gps-periodic-sync.timer" ]; then
+        systemctl enable gps-periodic-sync.timer
+        systemctl start gps-periodic-sync.timer
+        print_success "GPS periodic sync timer enabled and started"
+    fi
+    
+    # Enable main BathyImager service
     systemctl enable "$SERVICE_NAME"
     
-    # Start service
+    # Start main service
     systemctl start "$SERVICE_NAME"
     
     # Check status
@@ -646,6 +687,15 @@ enable_service() {
         print_success "BathyImager imaging service is running"
     else
         print_warning "BathyImager imaging service failed to start - check logs with: journalctl -u $SERVICE_NAME"
+    fi
+    
+    # Show GPS boot sync service status
+    if [ -f "/etc/systemd/system/gps-boot-sync.service" ]; then
+        if systemctl is-enabled --quiet gps-boot-sync; then
+            print_success "GPS boot sync service is enabled (will run on next boot)"
+        else
+            print_warning "GPS boot sync service is not enabled"
+        fi
     fi
 }
 
@@ -666,7 +716,13 @@ show_summary() {
     echo "Useful Commands:"
     echo "==============="
     echo "Check service status:    systemctl status $SERVICE_NAME"
+    echo "Check GPS boot sync:     systemctl status gps-boot-sync"
+    echo "Check GPS periodic sync: systemctl status gps-periodic-sync.timer"
     echo "View logs:              journalctl -u $SERVICE_NAME -f"
+    echo "View GPS sync logs:     journalctl -u gps-boot-sync -f"
+    echo "View GPS timer logs:    journalctl -u gps-periodic-sync -f"
+    echo "Manual GPS sync:        sudo systemctl start gps-boot-sync"
+    echo "Check time status:      timedatectl status"
     echo "Restart service:        sudo systemctl restart $SERVICE_NAME"
     echo "Stop service:           sudo systemctl stop $SERVICE_NAME"
     echo "Edit configuration:     nano $CONFIG_DIR/bathyimager_config.json"
@@ -680,20 +736,24 @@ show_summary() {
     echo "Activate Python env:    source $PROJECT_DIR/venv/bin/activate"
     echo "Run development mode:   cd $PROJECT_DIR/src && python main.py --config ../config/bathyimager_config.json"
     echo
-    echo "Useful Commands:"
+    echo "System Services:"
     echo "==============="
-    echo "Check service status:    systemctl status $SERVICE_NAME"
-    echo "View logs:              journalctl -u $SERVICE_NAME -f"
-    echo "Restart service:        sudo systemctl restart $SERVICE_NAME"
-    echo "Stop service:           sudo systemctl stop $SERVICE_NAME"
-    echo "Edit configuration:     sudo nano $CONFIG_DIR/config.json"
+    echo "Main service status:     systemctl status $SERVICE_NAME"
+    echo "GPS sync service:        systemctl status gps-boot-sync"
+    echo "View main logs:          journalctl -u $SERVICE_NAME -f"
+    echo "View GPS sync logs:      journalctl -u gps-boot-sync -f"
+    echo "Restart main service:    sudo systemctl restart $SERVICE_NAME"
+    echo "Stop main service:       sudo systemctl stop $SERVICE_NAME"
+    echo "Check time sync status:  timedatectl status"
     echo
     echo "Next Steps:"
     echo "==========="
     echo "1. Connect USB camera and GPS device"
     echo "2. Insert USB storage device"
-    echo "3. Check service logs for any errors"
-    echo "4. Test image capture functionality"
+    echo "3. Reboot to test GPS time synchronization (or run: sudo systemctl start gps-boot-sync)"
+    echo "4. Check service logs for any errors (journalctl -u bathyimager -f)"
+    echo "5. Verify GPS time sync (journalctl -u gps-boot-sync)"
+    echo "6. Test image capture functionality"
     echo
     
     if [[ "$DEV_MODE" == true ]]; then

@@ -1,0 +1,38 @@
+[Unit]
+Description=BathyCat GPS Boot Time Synchronization
+Documentation=https://github.com/your-org/bathycat-seabed-imager
+After=multi-user.target network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/bathyimager/BathyCat-Seabed-Imager/src/gps_time_sync.py
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/home/bathyimager/BathyCat-Seabed-Imager/venv/bin/python /home/bathyimager/BathyCat-Seabed-Imager/src/gps_time_sync.py --boot
+WorkingDirectory=/home/bathyimager/BathyCat-Seabed-Imager
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=180
+RemainAfterExit=yes
+
+# Environment
+Environment=PYTHONPATH=/home/bathyimager/BathyCat-Seabed-Imager/src
+Environment=PATH=/home/bathyimager/BathyCat-Seabed-Imager/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Security settings
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectKernelTunables=false
+ProtectKernelModules=false
+ProtectControlGroups=false
+RestrictRealtime=false
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Resource limits
+MemoryLimit=256M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target

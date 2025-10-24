@@ -1,69 +1,134 @@
-#!/bin/bash#!/bin/bash
-
-##
-
-# Development Environment Setup for BathyCat Seabed Imager# BathyImager Development Setup Script
-
-# ========================================================# ====================================
-
-# #
-
-# Simple wrapper script that calls the device permissions setup# Quick setup for development environment in home directory
-
-# and provides development environment configuration#
+#!/bin/bash#!/bin/bash#!/bin/bash
 
 #
 
-# Author: Mike Bollingerset -e
+# BathyImager Development Setup Script##
 
-# Date: October 2025
+# ====================================
 
-# Colors for output
+## Development Environment Setup for BathyCat Seabed Imager# BathyImager Development Setup Script
 
-set -e  # Exit on any errorRED='\033[0;31m'
+# Quick setup for development environment
 
-GREEN='\033[0;32m'
+# Sets up device permissions and development dependencies# ========================================================# ====================================
 
-echo "🛠️  BathyImager Development Environment Setup"YELLOW='\033[1;33m'
+#
 
-echo "============================================="BLUE='\033[0;34m'
+# Usage: sudo ./setup_dev.sh# #
+
+
+
+set -e# Simple wrapper script that calls the device permissions setup# Quick setup for development environment in home directory
+
+
+
+# Colors for output# and provides development environment configuration#
+
+RED='\033[0;31m'
+
+GREEN='\033[0;32m'#
+
+YELLOW='\033[1;33m'
+
+BLUE='\033[0;34m'# Author: Mike Bollingerset -e
 
 NC='\033[0m'
 
-# Check if we're running as root (needed for device permissions)
+# Date: October 2025
+
+print_status() {
+
+    echo -e "${BLUE}[INFO]${NC} $1"# Colors for output
+
+}
+
+set -e  # Exit on any errorRED='\033[0;31m'
+
+print_success() {
+
+    echo -e "${GREEN}[SUCCESS]${NC} $1"GREEN='\033[0;32m'
+
+}
+
+echo "🛠️  BathyImager Development Environment Setup"YELLOW='\033[1;33m'
+
+print_warning() {
+
+    echo -e "${YELLOW}[WARNING]${NC} $1"echo "============================================="BLUE='\033[0;34m'
+
+}
+
+NC='\033[0m'
+
+print_error() {
+
+    echo -e "${RED}[ERROR]${NC} $1"# Check if we're running as root (needed for device permissions)
+
+}
 
 if [ "$EUID" -ne 0 ]; thenprint_status() {
 
-    echo "❌ This script needs to be run as root for device permissions"    echo -e "${BLUE}[INFO]${NC} $1"
+echo "🛠️  BathyImager Development Environment Setup"
 
-    echo "   Please run: sudo ./setup_dev.sh"}
+echo "============================================="    echo "❌ This script needs to be run as root for device permissions"    echo -e "${BLUE}[INFO]${NC} $1"
 
-    exit 1
 
-fiprint_success() {
 
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+# Check if we're running as root (needed for device permissions)    echo "   Please run: sudo ./setup_dev.sh"}
 
-# Run the device permissions setup}
+if [ "$EUID" -ne 0 ]; then
 
-echo "🔧 Setting up device permissions..."
+    print_error "This script needs to be run as root for device permissions"    exit 1
 
-if [ -f "scripts/setup_device_permissions.sh" ]; thenprint_warning() {
+    echo "   Please run: sudo ./setup_dev.sh"
 
-    bash scripts/setup_device_permissions.sh    echo -e "${YELLOW}[WARNING]${NC} $1"
-
-    echo "✅ Device permissions configured"}
-
-else
-
-    echo "❌ Device permissions script not found"print_error() {
-
-    echo "   Looking for: scripts/setup_device_permissions.sh"    echo -e "${RED}[ERROR]${NC} $1"
-
-    exit 1}
+    exit 1fiprint_success() {
 
 fi
 
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+
+# Run device permissions setup
+
+print_status "Setting up device permissions..."# Run the device permissions setup}
+
+if [ -f "scripts/setup_device_permissions.sh" ]; then
+
+    chmod +x scripts/setup_device_permissions.shecho "🔧 Setting up device permissions..."
+
+    ./scripts/setup_device_permissions.sh
+
+    print_success "Device permissions configured"if [ -f "scripts/setup_device_permissions.sh" ]; thenprint_warning() {
+
+else
+
+    print_warning "Device permissions script not found"    bash scripts/setup_device_permissions.sh    echo -e "${YELLOW}[WARNING]${NC} $1"
+
+fi
+
+    echo "✅ Device permissions configured"}
+
+print_success "Development environment setup complete!"
+
+else
+
+echo
+
+echo "Development Commands:"    echo "❌ Device permissions script not found"print_error() {
+
+echo "===================="
+
+echo "Run BathyImager:          cd src && python3 main.py"    echo "   Looking for: scripts/setup_device_permissions.sh"    echo -e "${RED}[ERROR]${NC} $1"
+
+echo "Run with config:          cd src && python3 main.py --config ../config/bathycat_config.json"
+
+echo "Run tests:                python3 -m pytest tests/"    exit 1}
+
+echo "Check GPS:                cd src && python3 -c 'from gps import GPS; print(\"GPS module OK\")'"
+
+echo "Test camera:              cd src && python3 -c 'import cv2; print(\"Camera module OK\")'"fi
+
+echo
 echo "🚀 BathyImager Development Setup"
 
 # Create directories if they don't existecho "================================"
