@@ -460,27 +460,12 @@ create_systemd_service() {
         return 1
     fi
     
-    # Copy the GPS boot sync service file
-    if [ -f "$PROJECT_DIR/scripts/gps-boot-sync.service" ]; then
-        cp "$PROJECT_DIR/scripts/gps-boot-sync.service" /etc/systemd/system/
-        print_success "GPS boot sync service file installed"
+    # Install GPS time sync helper script
+    if [ -f "$PROJECT_DIR/scripts/gps_set_time.sh" ]; then
+        chmod +x "$PROJECT_DIR/scripts/gps_set_time.sh"
+        print_success "GPS time sync helper script installed"
     else
-        print_warning "GPS boot sync service file not found - GPS time synchronization will not be available"
-    fi
-    
-    # Copy GPS periodic sync service and timer files
-    if [ -f "$PROJECT_DIR/scripts/gps-periodic-sync.service" ]; then
-        cp "$PROJECT_DIR/scripts/gps-periodic-sync.service" /etc/systemd/system/
-        print_success "GPS periodic sync service file installed"
-    else
-        print_warning "GPS periodic sync service file not found"
-    fi
-    
-    if [ -f "$PROJECT_DIR/scripts/gps-periodic-sync.timer" ]; then
-        cp "$PROJECT_DIR/scripts/gps-periodic-sync.timer" /etc/systemd/system/
-        print_success "GPS periodic sync timer file installed"
-    else
-        print_warning "GPS periodic sync timer file not found"
+        print_warning "GPS time sync helper script not found"
     fi
     
     # Reload systemd
@@ -662,18 +647,9 @@ except Exception as e:
 enable_service() {
     print_status "Enabling and starting BathyImager services..."
     
-    # Enable GPS boot sync service (if available)
-    if [ -f "/etc/systemd/system/gps-boot-sync.service" ]; then
-        systemctl enable gps-boot-sync
-        print_success "GPS boot sync service enabled"
-    fi
-    
-    # Enable GPS periodic sync timer (if available)
-    if [ -f "/etc/systemd/system/gps-periodic-sync.timer" ]; then
-        systemctl enable gps-periodic-sync.timer
-        systemctl start gps-periodic-sync.timer
-        print_success "GPS periodic sync timer enabled and started"
-    fi
+    # Note: GPS time sync is now integrated into the main GPS class
+    # No separate services needed - GPS syncs time automatically on first fix
+    print_success "GPS time sync integrated into main GPS service"
     
     # Enable main BathyImager service
     systemctl enable "$SERVICE_NAME"
@@ -716,12 +692,7 @@ show_summary() {
     echo "Useful Commands:"
     echo "==============="
     echo "Check service status:    systemctl status $SERVICE_NAME"
-    echo "Check GPS boot sync:     systemctl status gps-boot-sync"
-    echo "Check GPS periodic sync: systemctl status gps-periodic-sync.timer"
     echo "View logs:              journalctl -u $SERVICE_NAME -f"
-    echo "View GPS sync logs:     journalctl -u gps-boot-sync -f"
-    echo "View GPS timer logs:    journalctl -u gps-periodic-sync -f"
-    echo "Manual GPS sync:        sudo systemctl start gps-boot-sync"
     echo "Check time status:      timedatectl status"
     echo "Restart service:        sudo systemctl restart $SERVICE_NAME"
     echo "Stop service:           sudo systemctl stop $SERVICE_NAME"

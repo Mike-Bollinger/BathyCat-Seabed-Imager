@@ -56,11 +56,13 @@ fi
 log "Setting up sudo privileges for GPS time synchronization..."
 SUDOERS_FILE="/etc/sudoers.d/bathyimager-gps-sync"
 
-# Create sudoers entry for date command (GPS time sync)
+# Create sudoers entry for GPS time sync commands
 cat > "$SUDOERS_FILE" << 'EOF'
-# Allow bathyimager user to set system date for GPS time synchronization
+# Allow bathyimager user to set system date/time for GPS synchronization
 # This is required for accurate GPS-synchronized timestamps on images
 bathyimager ALL=(root) NOPASSWD: /usr/bin/date
+bathyimager ALL=(root) NOPASSWD: /usr/bin/timedatectl
+bathyimager ALL=(root) NOPASSWD: /home/bathyimager/BathyCat-Seabed-Imager/scripts/gps_set_time.sh
 EOF
 
 # Set proper permissions on sudoers file

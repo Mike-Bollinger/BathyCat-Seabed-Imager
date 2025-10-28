@@ -103,7 +103,8 @@ class GPS:
         
         # Time synchronization state
         self.last_time_sync = 0
-        self.time_sync_interval = 300  # Sync every 5 minutes
+        self.time_sync_interval = 1800  # Sync every 30 minutes after first sync
+        self.first_fix_received = False
         self.system_time_synced = False
         
         # Threading for continuous GPS reading
@@ -269,7 +270,11 @@ class GPS:
                     
                     # Log GPS status with more detail
                     if fix.is_valid:
-                        self.logger.debug(f"GPS fix VALID: {lat:.6f}, {lon:.6f}, quality:{fix.fix_quality}, sats:{fix.satellites}")
+                        self.logger.info(f"🛰️  GPS FIX ACQUIRED: {lat:.6f}, {lon:.6f}, quality:{fix.fix_quality}, sats:{fix.satellites}")
+                        
+                        # Trigger time sync on first valid fix
+                        if not self.first_fix_received and self.time_sync:
+                            self.logger.info("🕐 First GPS fix acquired - triggering time synchronization")
                     else:
                         self.logger.debug(f"GPS fix PARTIAL: {lat:.6f}, {lon:.6f}, quality:{fix.fix_quality}, sats:{fix.satellites} (will still geotag images)")
                 else:
@@ -300,6 +305,19 @@ class GPS:
             fix_mode = mode_map.get(str(gsa.mode_fix_type), 'UNKNOWN')
             self.current_fix.fix_mode = fix_mode
     
+    def _ensure_utc_timezone(self) -> None:
+        """Ensure system timezone is set to UTC."""
+        try:
+            import subprocess
+            result = subprocess.run(['timedatectl', 'set-timezone', 'UTC'], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                self.logger.debug("System timezone confirmed as UTC")
+            else:
+                self.logger.warning(f"Could not set UTC timezone: {result.stderr}")
+        except Exception as e:
+            self.logger.debug(f"Timezone setting unavailable: {e}")
+    
     def _sync_system_time(self, gps_datetime: datetime) -> None:
         """
         Synchronize system time with GPS time.
@@ -308,9 +326,18 @@ class GPS:
             gps_datetime: GPS datetime (UTC)
         """
         try:
-            # Only sync if we haven't synced recently (avoid excessive sync attempts)
             current_time = time.time()
-            if current_time - self.last_time_sync < self.time_sync_interval:
+            
+            # Ensure UTC timezone
+            self._ensure_utc_timezone()
+            
+            # Always sync on first GPS fix, then respect interval
+            should_sync = (
+                not self.first_fix_received or  # First fix - always sync
+                (current_time - self.last_time_sync) >= self.time_sync_interval  # Periodic sync
+            )
+            
+            if not should_sync:
                 return
             
             # Convert GPS time to UTC timestamp
@@ -321,37 +348,44 @@ class GPS:
             system_timestamp = time.time()
             time_diff = abs(gps_timestamp - system_timestamp)
             
-            # Only sync if difference is significant (> 1 second)
-            if time_diff > 1.0:
+            # Sync if first fix OR significant difference (> 1 second)
+            should_set_time = not self.first_fix_received or time_diff > 1.0
+            
+            if should_set_time:
                 try:
                     # Import subprocess only when needed
                     import subprocess
+                    import os
                     
-                    # Format GPS time for system date command
-                    # Using date command format: MMDDhhmmYYYY.ss
-                    date_str = gps_utc.strftime("%m%d%H%M%Y.%S")
+                    # Use helper script for time setting (requires sudo)
+                    time_str = gps_utc.strftime("%Y-%m-%d %H:%M:%S")
+                    script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'scripts', 'gps_set_time.sh')
                     
-                    # Set system date (requires sudo privileges)
-                    result = subprocess.run(['sudo', 'date', date_str], 
-                                          capture_output=True, text=True, timeout=10)
-                    
-                    if result.returncode == 0:
-                        self.logger.info(f"System time synchronized with GPS: {gps_utc} (diff: {time_diff:.1f}s)")
-                        self.system_time_synced = True
+                    if os.path.exists(script_path):
+                        result = subprocess.run(['sudo', script_path, time_str], 
+                                              capture_output=True, text=True, timeout=15)
+                        
+                        if result.returncode == 0:
+                            self.logger.info(f"🕐 GPS TIME SYNC SUCCESS: System time set to {gps_utc} UTC (diff: {time_diff:.1f}s)")
+                            self.system_time_synced = True
+                            self.first_fix_received = True
+                        else:
+                            self.logger.error(f"🕐 GPS TIME SYNC FAILED: {result.stderr}")
                     else:
-                        self.logger.warning(f"Failed to set system time: {result.stderr}")
+                        self.logger.warning(f"GPS time sync helper script not found: {script_path}")
                         
                 except subprocess.TimeoutExpired:
-                    self.logger.warning("System time sync command timed out")
+                    self.logger.warning("GPS time sync command timed out")
                 except FileNotFoundError:
-                    self.logger.warning("System date command not available")
+                    self.logger.warning("GPS time sync helper script not available")
                 except Exception as e:
                     self.logger.warning(f"Could not sync system time: {e}")
-            else:
-                self.logger.debug(f"System time already accurate (diff: {time_diff:.1f}s)")
-                self.system_time_synced = True
-            
-            self.last_time_sync = current_time
+                else:
+                    self.logger.info(f"🕐 GPS TIME CHECK: System time already accurate (diff: {time_diff:.1f}s)")
+                    if not self.first_fix_received:
+                        self.system_time_synced = True
+                        self.first_fix_received = True            
+                        self.last_time_sync = current_time
             
         except Exception as e:
             self.logger.warning(f"Error in time synchronization: {e}")

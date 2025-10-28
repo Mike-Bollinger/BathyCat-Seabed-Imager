@@ -442,12 +442,11 @@ class BathyCatService:
         timestamp = datetime.utcnow()
         
         # Log the time source for debugging
-        if (gps_fix and gps_fix.is_valid and 
-            self.gps and hasattr(self.gps, 'system_time_synced') and 
+        if (self.gps and hasattr(self.gps, 'system_time_synced') and 
             self.gps.system_time_synced):
-            self.logger.debug(f"Using GPS-synchronized UTC time: {timestamp.isoformat()}")
+            self.logger.debug(f"📅 Using GPS-synchronized UTC time: {timestamp.isoformat()}")
         else:
-            self.logger.debug(f"Using system UTC time (GPS not synced): {timestamp.isoformat()}")
+            self.logger.debug(f"📅 Using system UTC time (GPS not yet synced): {timestamp.isoformat()}")
         
         return timestamp
     
