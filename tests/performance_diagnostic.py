@@ -20,13 +20,27 @@ def test_component_performance():
     print("🚀 BathyImager Performance Diagnostic")
     print("====================================")
     
-    # Load config
-    try:
-        with open("../config/bathyimager_config.json", 'r') as f:
-            config_data = json.load(f)
-        print(f"✅ Config loaded - Target FPS: {config_data.get('capture_fps', 'Unknown')}")
-    except Exception as e:
-        print(f"❌ Config load failed: {e}")
+    # Load config (try multiple paths)
+    config_paths = [
+        "../config/bathyimager_config.json",
+        "config/bathyimager_config.json",
+        "/home/bathyimager/BathyCat-Seabed-Imager/config/bathyimager_config.json"
+    ]
+    
+    config_data = None
+    for config_path in config_paths:
+        try:
+            with open(config_path, 'r') as f:
+                config_data = json.load(f)
+            print(f"✅ Config loaded from {config_path}")
+            print(f"   Target FPS: {config_data.get('capture_fps', 'Unknown')}")
+            break
+        except Exception as e:
+            continue
+    
+    if config_data is None:
+        print(f"❌ Config load failed - tried: {config_paths}")
+        print(f"   Current directory: {os.getcwd()}")
         return
     
     print("\n--- Component Performance Tests ---")
@@ -36,7 +50,18 @@ def test_component_performance():
         from camera import Camera
         from config import BathyImagerConfig
         
-        config = BathyImagerConfig("../config/bathyimager_config.json")
+        # Find config file
+        config_file = None
+        for path in config_paths:
+            if os.path.exists(path):
+                config_file = path
+                break
+        
+        if not config_file:
+            print(f"   ❌ Camera test skipped - no config file found")
+            return
+            
+        config = BathyImagerConfig(config_file)
         print(f"📷 Testing camera capture speed...")
         
         camera = Camera(config, None)  # No logger for speed test
