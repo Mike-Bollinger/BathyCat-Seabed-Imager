@@ -169,27 +169,61 @@ fi
 
 # Update dependencies
 echo "📦 Updating dependencies..."
-if [ -d "venv" ]; then
-    echo "   Using virtual environment..."
-    source venv/bin/activate
-    if pip install -r requirements.txt --quiet 2>/dev/null; then
-        echo "   Dependencies updated successfully"
-    else
-        echo "⚠️  Could not update dependencies in virtual environment"
-        echo "   You may need to install manually:"
-        echo "   source venv/bin/activate && pip install -r requirements.txt"
-    fi
-    deactivate
+
+# Check if requirements.txt exists
+if [ ! -f "requirements.txt" ]; then
+    echo "⚠️  No requirements.txt found - skipping dependency update"
 else
-    echo "   No virtual environment found - using system pip..."
-    if pip3 install -r requirements.txt --user --quiet 2>/dev/null; then
-        echo "   Dependencies updated successfully"
-    elif pip3 install -r requirements.txt --user --break-system-packages --quiet 2>/dev/null; then
-        echo "   Dependencies updated (with system override)"
+    if [ -d "venv" ]; then
+        echo "   Using virtual environment..."
+        
+        # Check if venv is working
+        if [ ! -f "venv/bin/activate" ]; then
+            echo "⚠️  Virtual environment appears corrupted"
+            echo "   Run: sudo ./scripts/install.sh --update to recreate"
+        else
+            # Test venv activation first
+            if source venv/bin/activate 2>/dev/null; then
+                echo "   Virtual environment activated successfully"
+                
+                # Try different pip install approaches with timeout
+                echo "   Installing dependencies (this may take a few minutes)..."
+                
+                # Method 1: Try standard pip install with timeout
+                if timeout 300 venv/bin/pip install -r requirements.txt --upgrade --no-cache-dir 2>/dev/null; then
+                    echo "   ✅ Dependencies updated successfully"
+                # Method 2: Try with --user flag
+                elif timeout 300 venv/bin/pip install -r requirements.txt --user --upgrade --no-cache-dir 2>/dev/null; then
+                    echo "   ✅ Dependencies updated (user install)"
+                # Method 3: Try with break-system-packages
+                elif timeout 300 venv/bin/pip install -r requirements.txt --upgrade --no-cache-dir --break-system-packages 2>/dev/null; then
+                    echo "   ✅ Dependencies updated (system override)"
+                else
+                    echo "   ⚠️  Automatic dependency update failed"
+                    echo "   You may need to run manually:"
+                    echo "   source venv/bin/activate && pip install -r requirements.txt"
+                fi
+                
+                deactivate 2>/dev/null || true
+            else
+                echo "   ⚠️  Could not activate virtual environment"
+                echo "   Run: sudo ./scripts/install.sh --update to fix"
+            fi
+        fi
     else
-        echo "⚠️  Could not update dependencies automatically"
-        echo "   You may need to install manually:"
-        echo "   pip3 install -r requirements.txt --user --break-system-packages"
+        echo "   No virtual environment found - using system pip..."
+        echo "   Installing dependencies (this may take a few minutes)..."
+        
+        # Try different system pip approaches with timeout
+        if timeout 300 pip3 install -r requirements.txt --user --upgrade --no-cache-dir 2>/dev/null; then
+            echo "   ✅ Dependencies updated successfully"
+        elif timeout 300 pip3 install -r requirements.txt --user --upgrade --no-cache-dir --break-system-packages 2>/dev/null; then
+            echo "   ✅ Dependencies updated (system override)"
+        else
+            echo "   ⚠️  Could not update dependencies automatically"
+            echo "   You may need to install manually:"
+            echo "   pip3 install -r requirements.txt --user --break-system-packages"
+        fi
     fi
 fi
 
@@ -215,19 +249,28 @@ git log --oneline -1
 
 # Test the update
 echo "🧪 Testing update..."
-if [ -d "venv" ]; then
-    source venv/bin/activate
-    if python -c "import sys; sys.path.append('src'); import main; print('✅ Main app loads successfully')" 2>/dev/null; then
-        echo "   App test passed"
+if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
+    echo "   Testing with virtual environment..."
+    if source venv/bin/activate 2>/dev/null; then
+        # Test with timeout to prevent hanging
+        if timeout 30 venv/bin/python -c "import sys; sys.path.append('src'); import main; print('✅ Main app loads successfully')" 2>/dev/null; then
+            echo "   ✅ App test passed"
+        else
+            echo "   ⚠️  App test failed or timed out - check for errors"
+            echo "   Try: source venv/bin/activate && python src/main.py --help"
+        fi
+        deactivate 2>/dev/null || true
     else
-        echo "❌ App test failed - check for errors"
+        echo "   ⚠️  Could not activate virtual environment for testing"
     fi
-    deactivate
 else
-    if python3 -c "import sys; sys.path.append('src'); import main; print('✅ Main app loads successfully')" 2>/dev/null; then
-        echo "   App test passed"
+    echo "   Testing with system Python..."
+    # Test with timeout to prevent hanging
+    if timeout 30 python3 -c "import sys; sys.path.append('src'); import main; print('✅ Main app loads successfully')" 2>/dev/null; then
+        echo "   ✅ App test passed"
     else
-        echo "❌ App test failed - check for errors"
+        echo "   ⚠️  App test failed or timed out - check for errors"
+        echo "   Try: python3 src/main.py --help"
     fi
 fi
 
@@ -240,6 +283,11 @@ echo "   To start service:          sudo systemctl start bathyimager"
 echo "   To enable auto-start:      sudo systemctl enable bathyimager"
 echo "   To check status:           sudo systemctl status bathyimager"
 echo "   To view logs:              sudo journalctl -u bathyimager -f"
+echo ""
+echo "🔧 If Virtual Environment Issues Persist:"
+echo "   Full reinstall (recreates venv): sudo ./scripts/install.sh --update"
+echo "   Manual venv recreation:          rm -rf venv && python3 -m venv venv"
+echo "   Manual dependency install:       source venv/bin/activate && pip install -r requirements.txt"
 echo ""
 echo "🏃 Manual Running:"
 echo "   • python3 src/main.py --config config/bathyimager_config.json"

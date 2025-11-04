@@ -294,11 +294,32 @@ setup_directories() {
 setup_python_environment() {
     print_status "Setting up Python virtual environment..."
     
-    # Create virtual environment
-    sudo -u "$INSTALL_USER" python3 -m venv "$PYTHON_ENV"
+    # Remove existing venv if it exists (for update mode)
+    if [[ "$UPDATE_MODE" == true && -d "$PYTHON_ENV" ]]; then
+        print_status "Removing existing virtual environment..."
+        sudo rm -rf "$PYTHON_ENV"
+    fi
     
-    # Upgrade pip
-    sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install --upgrade pip setuptools wheel
+    # Ensure python3-venv is available
+    if ! python3 -m venv --help &>/dev/null; then
+        print_status "Installing python3-venv package..."
+        apt-get update
+        apt-get install -y python3-venv
+    fi
+    
+    # Create virtual environment with system site packages for better compatibility
+    print_status "Creating virtual environment..."
+    if ! sudo -u "$INSTALL_USER" python3 -m venv "$PYTHON_ENV" --system-site-packages; then
+        print_error "Failed to create virtual environment"
+        print_status "Trying without system-site-packages..."
+        sudo -u "$INSTALL_USER" python3 -m venv "$PYTHON_ENV"
+    fi
+    
+    # Upgrade pip with retry and timeout
+    print_status "Upgrading pip in virtual environment..."
+    if ! timeout 300 sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install --upgrade pip setuptools wheel --no-cache-dir; then
+        print_warning "Pip upgrade failed or timed out - continuing anyway"
+    fi
     
     print_success "Python virtual environment created"
 }
@@ -307,31 +328,45 @@ setup_python_environment() {
 install_python_dependencies() {
     print_status "Installing Python dependencies..."
     
-    # Core dependencies
-    sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install \
-        opencv-python \
-        numpy \
-        pillow \
-        piexif \
-        pynmea2 \
-        pyserial \
-        psutil
+    # Use requirements.txt if it exists, otherwise install core dependencies manually
+    if [ -f "$PROJECT_DIR/requirements.txt" ]; then
+        print_status "Installing from requirements.txt..."
+        if ! timeout 600 sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install -r "$PROJECT_DIR/requirements.txt" --no-cache-dir; then
+            print_warning "Requirements.txt installation failed - trying individual packages"
+            install_core_dependencies_manual
+        fi
+    else
+        install_core_dependencies_manual
+    fi
+}
+
+# Function to install core dependencies manually (fallback)
+install_core_dependencies_manual() {
+    print_status "Installing core dependencies manually..."
+    
+    # Core dependencies with timeout and error handling
+    for package in opencv-python numpy pillow piexif pynmea2 pyserial psutil; do
+        print_status "Installing $package..."
+        if ! timeout 180 sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install "$package" --no-cache-dir; then
+            print_warning "Failed to install $package - continuing with next package"
+        fi
+    done
     
     # Try to install RPi.GPIO (may need different approach on newer OS)
-    if ! sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install RPi.GPIO; then
+    print_status "Installing GPIO libraries..."
+    if ! timeout 120 sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install RPi.GPIO --no-cache-dir; then
         print_warning "RPi.GPIO installation failed - trying alternative gpiozero"
-        sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install gpiozero
+        timeout 120 sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install gpiozero --no-cache-dir || print_warning "GPIO library installation failed"
     fi
     
     # Development dependencies (if dev mode)
     if [[ "$DEV_MODE" == true ]]; then
-        sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install \
-            pytest \
-            pytest-cov \
-            black \
-            flake8 \
-            mypy \
-            pre-commit
+        print_status "Installing development dependencies..."
+        for dev_package in pytest pytest-cov black flake8 mypy pre-commit; do
+            if ! timeout 120 sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install "$dev_package" --no-cache-dir; then
+                print_warning "Failed to install $dev_package"
+            fi
+        done
     fi
     
     print_success "Python dependencies installed"

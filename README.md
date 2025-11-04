@@ -648,6 +648,42 @@ For development on non-Raspberry Pi systems:
 
 ### Common Issues
 
+#### Virtual Environment Issues (Full Raspberry Pi OS)
+
+When switching from Raspberry Pi OS Lite to Full OS, you may encounter virtual environment problems:
+
+```bash
+# Diagnose virtual environment issues
+./scripts/venv_diagnostic.sh
+
+# Automatic fix attempt
+./scripts/venv_diagnostic.sh fix
+
+# Manual virtual environment recreation
+rm -rf venv
+python3 -m venv venv --system-site-packages
+source venv/bin/activate
+pip install --upgrade pip setuptools wheel
+pip install -r requirements.txt
+
+# If update script hangs, force reinstall
+sudo ./scripts/install.sh --update
+
+# Check for specific errors
+sudo journalctl -u bathyimager | grep -i "python\|pip\|venv"
+```
+
+**Common Symptoms:**
+- Update script hangs on "Installing dependencies"
+- ImportError when starting service
+- pip commands timing out or failing
+
+**Solutions:**
+1. **Full Reinstall**: `sudo ./scripts/install.sh --update` (recreates entire venv)
+2. **Quick Fix**: `./scripts/venv_diagnostic.sh fix` (rebuilds venv only)
+3. **Manual Install**: Remove venv directory and recreate manually
+4. **System Packages**: Install missing system dependencies: `sudo apt install python3-venv python3-pip`
+
 #### Camera Not Detected
 
 ```bash
