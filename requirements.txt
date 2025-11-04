@@ -10,12 +10,12 @@
 
 # Core Runtime Dependencies
 # -------------------------
-opencv-python>=4.5.0,<5.0.0   # Computer vision and camera interface
-pynmea2>=1.18.0,<2.0.0        # NMEA GPS sentence parsing
-Pillow>=8.0.0,<11.0.0         # Image processing and manipulation
-piexif>=1.1.3,<2.0.0          # EXIF metadata manipulation
-pyserial>=3.5,<4.0.0          # Serial communication for GPS
-numpy>=1.19.0,<2.0.0          # Numerical operations and array handling (use piwheels on RPi)
+opencv-python>=4.5.0          # Computer vision and camera interface (use latest)
+pynmea2>=1.18.0               # NMEA GPS sentence parsing (use latest)
+Pillow>=8.0.0                 # Image processing and manipulation (use latest)
+piexif>=1.1.3                # EXIF metadata manipulation (use latest)
+pyserial>=3.5                # Serial communication for GPS (use latest)
+numpy>=1.19.0                # Numerical operations and array handling (use latest compatible)
 
 # GPIO and Hardware (Raspberry Pi)
 # --------------------------------
@@ -28,26 +28,26 @@ dataclasses>=0.6; python_version < "3.7"  # Backport for older Python versions
 
 # Development and Testing
 # ----------------------
-pytest>=6.0.0,<8.0.0          # Testing framework
-pytest-cov>=2.10.0,<5.0.0     # Coverage reporting
-pytest-mock>=3.3.0,<4.0.0     # Mocking utilities
+pytest>=6.0.0                 # Testing framework (use latest)
+pytest-cov>=2.10.0            # Coverage reporting (use latest)
+pytest-mock>=3.3.0            # Mocking utilities (use latest)
 unittest-mock>=1.0.0; python_version < "3.3"  # Mock backport for older Python
 
 # Code Quality and Linting
 # ------------------------
-black>=21.0.0,<24.0.0         # Code formatting
-flake8>=3.8.0,<7.0.0          # Style checking
-mypy>=0.812,<2.0.0            # Type checking
+black>=21.0.0                 # Code formatting (use latest)
+flake8>=3.8.0                 # Style checking (use latest)
+mypy>=0.812                   # Type checking (use latest)
 
 # Documentation
 # ------------
-sphinx>=3.4.0,<8.0.0          # Documentation generation
-sphinx-rtd-theme>=0.5.0,<2.0.0  # Documentation theme
+sphinx>=3.4.0                 # Documentation generation (use latest)
+sphinx-rtd-theme>=0.5.0       # Documentation theme (use latest)
 
 # Performance and System Monitoring
 # ---------------------------------
-psutil>=5.7.0,<6.0.0          # System monitoring and process management
-schedule>=1.1.0,<2.0.0        # Task scheduling
+psutil>=5.7.0                 # System monitoring and process management (use latest)
+schedule>=1.1.0               # Task scheduling (use latest)
 
 # Additional Utility Dependencies
 # ------------------------------
