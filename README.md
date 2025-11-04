@@ -481,6 +481,46 @@ When the red error LED is solid, it indicates one or more critical system failur
 4. Verify disk space: `df -h /media/usb`
 5. Restart service: `sudo systemctl restart bathyimager`
 
+#### GPS Time Sync Issues
+
+If you see `🕐 GPS TIME SYNC FAILED:` in the logs even though GPS has a fix:
+
+```bash
+# Diagnose GPS time sync issues
+./scripts/gps_time_diagnostic.sh
+
+# Check if NTP is preventing manual time setting
+timedatectl status
+
+# Temporarily disable NTP for GPS sync (if needed)
+sudo timedatectl set-ntp false
+
+# Test GPS time sync manually
+sudo ./scripts/gps_set_time.sh "$(date -u '+%Y-%m-%d %H:%M:%S')"
+
+# Re-enable NTP after testing
+sudo timedatectl set-ntp true
+
+# Check sudoers configuration
+sudo cat /etc/sudoers.d/bathyimager-gps-sync
+
+# Recreate GPS sync permissions
+sudo ./scripts/setup_device_permissions.sh
+```
+
+**Common GPS Time Sync Issues:**
+- **NTP Conflict**: NTP service prevents manual time changes
+- **Permission Issue**: Sudoers file missing or incorrect  
+- **Script Missing**: `gps_set_time.sh` not found or not executable
+- **Command Failure**: `timedatectl` not working properly
+
+**Quick Fix**: If GPS time sync isn't critical, disable it in config:
+```json
+{
+  "gps_time_sync": false
+}
+```
+
 #### LED Hardware Setup
 
 ```bash

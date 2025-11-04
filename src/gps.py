@@ -362,15 +362,25 @@ class GPS:
                     script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'scripts', 'gps_set_time.sh')
                     
                     if os.path.exists(script_path):
+                        self.logger.debug(f"Executing GPS time sync: sudo {script_path} '{time_str}'")
                         result = subprocess.run(['sudo', script_path, time_str], 
                                               capture_output=True, text=True, timeout=15)
                         
                         if result.returncode == 0:
                             self.logger.info(f"🕐 GPS TIME SYNC SUCCESS: System time set to {gps_utc} UTC (diff: {time_diff:.1f}s)")
+                            if result.stdout.strip():
+                                self.logger.debug(f"GPS sync output: {result.stdout.strip()}")
                             self.system_time_synced = True
                             self.first_fix_received = True
                         else:
-                            self.logger.error(f"🕐 GPS TIME SYNC FAILED: {result.stderr}")
+                            error_msg = result.stderr.strip() if result.stderr.strip() else result.stdout.strip()
+                            if not error_msg:
+                                error_msg = f"Command failed with exit code {result.returncode}"
+                            self.logger.error(f"🕐 GPS TIME SYNC FAILED: {error_msg}")
+                            self.logger.debug(f"GPS sync command: sudo {script_path} '{time_str}'")
+                            self.logger.debug(f"Return code: {result.returncode}")
+                            self.logger.debug(f"Stdout: {result.stdout}")
+                            self.logger.debug(f"Stderr: {result.stderr}")
                     else:
                         self.logger.warning(f"GPS time sync helper script not found: {script_path}")
                         
