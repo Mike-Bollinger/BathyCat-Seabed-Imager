@@ -67,11 +67,12 @@ class GPSConfig:
 class StorageConfig:
     """Storage configuration settings."""
     base_path: str = "/media/usb"
+    filename_prefix: str = "bathyimager"
     max_images_per_day: int = 10000
     cleanup_days: int = 30
     min_free_space_mb: int = 1000
     directory_structure: str = "%Y/%m/%d"
-    filename_format: str = "bathycat_%Y%m%d_%H%M%S_{counter:04d}.jpg"
+    filename_format: str = "bathyimager_%Y%m%d_%H%M%S_{counter:04d}.jpg"
     jpeg_quality: int = 95
     auto_mount: bool = True
     mount_timeout: float = 10.0

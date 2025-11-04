@@ -366,9 +366,9 @@ class LEDManager:
         
         if 'gps' in self.leds:
             if has_fix:
-                self.leds['gps'].set_state(LEDState.ON)
+                self.leds['gps'].set_state(LEDState.ON)  # Solid blue for GPS fix
             elif acquiring:
-                self.leds['gps'].set_state(LEDState.SLOW_BLINK)
+                self.leds['gps'].set_state(LEDState.SLOW_BLINK)  # Blinking blue when acquiring
             else:
                 self.leds['gps'].set_state(LEDState.OFF)
     
@@ -395,20 +395,18 @@ class LEDManager:
     
     def set_error_condition(self, error: bool, critical: bool = False) -> None:
         """
-        Set error condition indicator.
+        Set error condition indicator. Only illuminates for critical errors.
         
         Args:
-            error: True if error condition exists, False otherwise
-            critical: True if error is critical, False for warnings
+            error: True if any error condition exists, False otherwise
+            critical: True if the error is critical (e.g., storage failure)
         """
         self.system_states['error_condition'] = error
         
         if 'error' in self.leds:
-            if error:
-                if critical:
-                    self.leds['error'].set_state(LEDState.FAST_BLINK)
-                else:
-                    self.leds['error'].set_state(LEDState.SLOW_BLINK)
+            if critical:
+                # Only show a red light for critical errors.
+                self.leds['error'].set_state(LEDState.ON)
             else:
                 self.leds['error'].set_state(LEDState.OFF)
     

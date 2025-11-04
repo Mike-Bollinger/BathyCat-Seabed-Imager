@@ -320,6 +320,7 @@ The enhanced configuration system (`src/config.py`) provides:
 {
   "storage": {
     "base_path": "/media/usb",              # USB mount point
+    "filename_prefix": "bathyimager",       # Prefix for image filenames
     "max_images_per_day": 10000,            # Daily image limit
     "cleanup_days": 30,                     # Delete files older than N days
     "min_free_space_mb": 1000,              # Minimum free space (MB)
@@ -450,18 +451,15 @@ The BathyImager system uses GPIO-controlled LEDs to provide visual status feedba
 | Power LED | Green | Slow blink (1 Hz) | System starting up |
 | Power LED | Green | Fast blink (2 Hz) | System shutting down |
 | Power LED | Off | System powered off or failed |
-| **GPS LED** (GPIO 23) | Blue | Solid | GPS fix acquired (>4 satellites) |
+| **GPS LED** (GPIO 23) | Blue | Solid | GPS fix acquired |
 | GPS LED | Blue | Slow blink (0.5 Hz) | GPS searching for fix |
-| GPS LED | Blue | Fast blink (3 Hz) | GPS initializing |
 | GPS LED | Off | GPS disabled or failed |
 | **Camera LED** (GPIO 24) | Yellow | Brief flash | Image captured (each photo) |
 | Camera LED | Yellow | Solid | Camera active/standby |
 | Camera LED | Yellow | SOS pattern (... --- ...) | Camera error/failure |
 | Camera LED | Off | Camera inactive or disabled |
-| **Error LED** (GPIO 25) | Red | Off | No errors |
-| Error LED | Red | Slow blink (0.5 Hz) | Warning condition |
-| Error LED | Red | Fast blink (2 Hz) | Recoverable error |
-| Error LED | Red | Solid | Critical system error |
+| **Error LED** (GPIO 25) | Red | Off | No critical errors |
+| Error LED | Red | Solid | Critical system error (e.g., storage failure) |
 
 #### LED Hardware Setup
 
@@ -743,7 +741,7 @@ sudo cat /dev/ttyUSB0 | grep -E "GPGGA|GPRMC"
 python3 -c "
 from PIL import Image
 import piexif
-filepath = '/media/usb/bathyimager/YYYY/MM/DD/bathyimager_YYYYMMDD_HHMMSS.jpg'
+filepath = '/media/usb/bathyimager/YYYY/MM/DD/{filename_prefix}_YYYYMMDD_HHMMSS.jpg'
 with Image.open(filepath) as img:
     exif = piexif.load(img.info.get('exif', b''))
     gps_info = exif.get('GPS', {})

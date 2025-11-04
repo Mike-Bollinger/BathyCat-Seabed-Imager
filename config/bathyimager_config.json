@@ -27,6 +27,7 @@
   "preview_width": 320,
   
   "storage_base_path": "/media/usb/bathyimager",
+  "filename_prefix": "bathyimager",
   "min_free_space_gb": 5.0,
   "auto_cleanup_enabled": true,
   "cleanup_threshold_gb": 10.0,

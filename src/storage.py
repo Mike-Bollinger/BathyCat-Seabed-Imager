@@ -48,6 +48,7 @@ class StorageManager:
         
         # Storage settings from config
         self.base_path = config.get('storage_base_path', '/media/usb/bathyimager')
+        self.filename_prefix = config.get('filename_prefix', 'bathyimager')
         self.min_free_space_gb = config.get('min_free_space_gb', 5.0)
         self.auto_cleanup_enabled = config.get('auto_cleanup_enabled', True)
         self.cleanup_threshold_gb = config.get('cleanup_threshold_gb', 10.0)
@@ -215,7 +216,7 @@ class StorageManager:
     
     def get_image_path(self, timestamp: Optional[datetime] = None) -> str:
         """
-        Generate organized file path for image: bathyimager/images/YYYYMMDD/filename.jpg
+        Generate organized file path for image: storage/images/YYYYMMDD/{prefix}_timestamp.jpg
         
         Args:
             timestamp: Image timestamp (uses current time if None)
@@ -232,7 +233,7 @@ class StorageManager:
         os.makedirs(dir_path, exist_ok=True)
         
         # Generate filename with timestamp and microseconds for uniqueness
-        filename = f"bathyimager_{timestamp.strftime('%Y%m%d_%H%M%S_%f')[:-3]}.jpg"
+        filename = f"{self.filename_prefix}_{timestamp.strftime('%Y%m%d_%H%M%S_%f')[:-3]}.jpg"
         
         return os.path.join(dir_path, filename)
     
