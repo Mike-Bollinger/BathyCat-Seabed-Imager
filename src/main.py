@@ -21,7 +21,7 @@ import signal
 import logging
 import threading
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 import json
 
@@ -439,7 +439,7 @@ class BathyCatService:
             datetime: Always returns UTC timestamp for consistency
         """
         # Always use UTC for consistency in image metadata
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now(timezone.utc)
         
         # Log the time source for debugging
         if (self.gps and hasattr(self.gps, 'system_time_synced') and 
