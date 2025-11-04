@@ -1,5 +1,12 @@
 # BathyCat Seabed Imager - Python Dependencies
 # =============================================
+#
+# Installation Notes for Raspberry Pi:
+# ------------------------------------
+# • Use piwheels for pre-compiled wheels: --extra-index-url https://www.piwheels.org/simple
+# • Prefer binary packages: --prefer-binary --only-binary=numpy,opencv-python,Pillow
+# • If numpy hangs on "preparing metadata", run: ./scripts/fix_numpy_install.sh
+#
 
 # Core Runtime Dependencies
 # -------------------------
@@ -8,7 +15,7 @@ pynmea2>=1.18.0,<2.0.0        # NMEA GPS sentence parsing
 Pillow>=8.0.0,<11.0.0         # Image processing and manipulation
 piexif>=1.1.3,<2.0.0          # EXIF metadata manipulation
 pyserial>=3.5,<4.0.0          # Serial communication for GPS
-numpy>=1.19.0,<2.0.0          # Numerical operations and array handling
+numpy>=1.19.0,<2.0.0          # Numerical operations and array handling (use piwheels on RPi)
 
 # GPIO and Hardware (Raspberry Pi)
 # --------------------------------

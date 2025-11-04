@@ -186,22 +186,56 @@ else
             if source venv/bin/activate 2>/dev/null; then
                 echo "   Virtual environment activated successfully"
                 
-                # Try different pip install approaches with timeout
-                echo "   Installing dependencies (this may take a few minutes)..."
+                # Upgrade pip and tools first
+                echo "   Upgrading pip, setuptools, and wheel..."
+                venv/bin/pip install --upgrade pip setuptools wheel --no-cache-dir >/dev/null 2>&1 || echo "   Warning: Could not upgrade pip tools"
                 
-                # Method 1: Try standard pip install with timeout
-                if timeout 300 venv/bin/pip install -r requirements.txt --upgrade --no-cache-dir 2>/dev/null; then
-                    echo "   ✅ Dependencies updated successfully"
-                # Method 2: Try with --user flag
-                elif timeout 300 venv/bin/pip install -r requirements.txt --user --upgrade --no-cache-dir 2>/dev/null; then
-                    echo "   ✅ Dependencies updated (user install)"
-                # Method 3: Try with break-system-packages
-                elif timeout 300 venv/bin/pip install -r requirements.txt --upgrade --no-cache-dir --break-system-packages 2>/dev/null; then
-                    echo "   ✅ Dependencies updated (system override)"
+                # Install problematic packages individually with pre-compiled wheels
+                echo "   Installing dependencies (this may take a few minutes)..."
+                echo "   Note: Using pre-compiled wheels to avoid compilation issues..."
+                
+                # Method 1: Try with prefer-binary and only-binary for numpy to avoid compilation
+                if timeout 600 venv/bin/pip install -r requirements.txt \
+                    --upgrade \
+                    --no-cache-dir \
+                    --prefer-binary \
+                    --only-binary=numpy,opencv-python,Pillow \
+                    --extra-index-url https://www.piwheels.org/simple \
+                    2>/dev/null; then
+                    echo "   ✅ Dependencies updated successfully (using pre-compiled wheels)"
+                    
+                # Method 2: Install numpy specifically from piwheels first, then rest
+                elif echo "   Trying alternative approach with piwheels..." && \
+                     timeout 300 venv/bin/pip install numpy --upgrade --no-cache-dir \
+                         --index-url https://www.piwheels.org/simple \
+                         --extra-index-url https://pypi.org/simple 2>/dev/null && \
+                     timeout 600 venv/bin/pip install -r requirements.txt \
+                         --upgrade --no-cache-dir --prefer-binary 2>/dev/null; then
+                    echo "   ✅ Dependencies updated (numpy from piwheels)"
+                    
+                # Method 3: Try system packages for numpy if available
+                elif echo "   Trying with system site packages..." && \
+                     timeout 300 venv/bin/pip install -r requirements.txt \
+                         --upgrade --no-cache-dir --prefer-binary \
+                         --find-links /usr/lib/python3/dist-packages 2>/dev/null; then
+                    echo "   ✅ Dependencies updated (using system packages)"
+                    
+                # Method 4: Last resort - try without numpy and install it separately
+                elif echo "   Last resort: Installing without numpy compilation..." && \
+                     timeout 300 venv/bin/pip install -r requirements.txt \
+                         --upgrade --no-cache-dir --no-deps 2>/dev/null; then
+                    echo "   ⚠️  Dependencies installed without dependency checking"
+                    echo "   You may need to verify all dependencies are working"
                 else
                     echo "   ⚠️  Automatic dependency update failed"
-                    echo "   You may need to run manually:"
-                    echo "   source venv/bin/activate && pip install -r requirements.txt"
+                    echo "   Common causes on Raspberry Pi:"
+                    echo "   • Numpy compilation issues (try: pip install numpy --index-url https://www.piwheels.org/simple)"
+                    echo "   • Low memory during compilation"
+                    echo "   • Missing build dependencies"
+                    echo "   Manual fix:"
+                    echo "   source venv/bin/activate"
+                    echo "   pip install numpy --index-url https://www.piwheels.org/simple"
+                    echo "   pip install -r requirements.txt --prefer-binary"
                 fi
                 
                 deactivate 2>/dev/null || true
@@ -214,15 +248,26 @@ else
         echo "   No virtual environment found - using system pip..."
         echo "   Installing dependencies (this may take a few minutes)..."
         
-        # Try different system pip approaches with timeout
-        if timeout 300 pip3 install -r requirements.txt --user --upgrade --no-cache-dir 2>/dev/null; then
-            echo "   ✅ Dependencies updated successfully"
-        elif timeout 300 pip3 install -r requirements.txt --user --upgrade --no-cache-dir --break-system-packages 2>/dev/null; then
+        # Upgrade pip first
+        pip3 install --upgrade pip setuptools wheel --user --no-cache-dir >/dev/null 2>&1 || echo "   Warning: Could not upgrade pip"
+        
+        # Try different system pip approaches with better numpy handling
+        if timeout 600 pip3 install -r requirements.txt --user --upgrade --no-cache-dir \
+            --prefer-binary --only-binary=numpy,opencv-python,Pillow \
+            --extra-index-url https://www.piwheels.org/simple 2>/dev/null; then
+            echo "   ✅ Dependencies updated successfully (using pre-compiled wheels)"
+        elif timeout 300 pip3 install numpy --user --upgrade --no-cache-dir \
+             --index-url https://www.piwheels.org/simple \
+             --extra-index-url https://pypi.org/simple 2>/dev/null && \
+             timeout 600 pip3 install -r requirements.txt --user --upgrade --no-cache-dir --prefer-binary 2>/dev/null; then
+            echo "   ✅ Dependencies updated (numpy from piwheels)"
+        elif timeout 600 pip3 install -r requirements.txt --user --upgrade --no-cache-dir --prefer-binary --break-system-packages 2>/dev/null; then
             echo "   ✅ Dependencies updated (system override)"
         else
             echo "   ⚠️  Could not update dependencies automatically"
-            echo "   You may need to install manually:"
-            echo "   pip3 install -r requirements.txt --user --break-system-packages"
+            echo "   Try these manual steps:"
+            echo "   pip3 install numpy --user --index-url https://www.piwheels.org/simple"
+            echo "   pip3 install -r requirements.txt --user --prefer-binary --break-system-packages"
         fi
     fi
 fi

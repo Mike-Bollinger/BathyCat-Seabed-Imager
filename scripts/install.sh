@@ -331,7 +331,27 @@ install_python_dependencies() {
     # Use requirements.txt if it exists, otherwise install core dependencies manually
     if [ -f "$PROJECT_DIR/requirements.txt" ]; then
         print_status "Installing from requirements.txt..."
-        if ! timeout 600 sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install -r "$PROJECT_DIR/requirements.txt" --no-cache-dir; then
+        print_status "Note: Using pre-compiled wheels to avoid compilation issues..."
+        
+        # Upgrade pip tools first
+        sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install --upgrade pip setuptools wheel --no-cache-dir >/dev/null 2>&1 || true
+        
+        # Try enhanced installation with piwheels and binary preference
+        if timeout 600 sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install -r "$PROJECT_DIR/requirements.txt" \
+            --no-cache-dir \
+            --prefer-binary \
+            --only-binary=numpy,opencv-python,Pillow \
+            --extra-index-url https://www.piwheels.org/simple; then
+            print_success "Requirements installed successfully (using pre-compiled wheels)"
+        elif print_warning "Primary method failed - trying piwheels numpy first..." && \
+             timeout 300 sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install numpy \
+                 --no-cache-dir \
+                 --index-url https://www.piwheels.org/simple \
+                 --extra-index-url https://pypi.org/simple && \
+             timeout 600 sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install -r "$PROJECT_DIR/requirements.txt" \
+                 --no-cache-dir --prefer-binary; then
+            print_success "Requirements installed (numpy from piwheels)"
+        else
             print_warning "Requirements.txt installation failed - trying individual packages"
             install_core_dependencies_manual
         fi
@@ -344,10 +364,22 @@ install_python_dependencies() {
 install_core_dependencies_manual() {
     print_status "Installing core dependencies manually..."
     
-    # Core dependencies with timeout and error handling
-    for package in opencv-python numpy pillow piexif pynmea2 pyserial psutil; do
+    # Install numpy first from piwheels to avoid compilation issues
+    print_status "Installing numpy (using piwheels for ARM optimization)..."
+    if ! timeout 300 sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install numpy \
+         --index-url https://www.piwheels.org/simple \
+         --extra-index-url https://pypi.org/simple \
+         --no-cache-dir; then
+        print_warning "Piwheels numpy failed - trying standard PyPI with binary preference"
+        if ! timeout 300 sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install numpy --prefer-binary --no-cache-dir; then
+            print_warning "Failed to install numpy - this may cause issues"
+        fi
+    fi
+    
+    # Core dependencies with timeout and error handling (excluding numpy since we already installed it)
+    for package in opencv-python pillow piexif pynmea2 pyserial psutil; do
         print_status "Installing $package..."
-        if ! timeout 180 sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install "$package" --no-cache-dir; then
+        if ! timeout 180 sudo -u "$INSTALL_USER" "$PYTHON_ENV/bin/pip" install "$package" --prefer-binary --no-cache-dir; then
             print_warning "Failed to install $package - continuing with next package"
         fi
     done
