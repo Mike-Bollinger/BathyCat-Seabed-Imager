@@ -119,7 +119,7 @@ echo ""
 echo "💡 Troubleshooting Tips:"
 echo "   • Check GPS fix status: ./tests/quick_gps_check.py"
 echo "   • Run with debug logging: LOG_LEVEL=DEBUG ./run_bathyimager.sh"
-echo "   • Manual time sync test: sudo ./scripts/gps_set_time.sh '$(date -u \"+%Y-%m-%d %H:%M:%S\")'"
+echo "   • Manual time sync test: sudo ./scripts/gps_set_time.sh \"\$(date -u '+%Y-%m-%d %H:%M:%S')\""
 echo "   • Check system logs: sudo journalctl -u bathyimager | grep -i time"
 
 echo ""

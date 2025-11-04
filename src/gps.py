@@ -372,6 +372,7 @@ class GPS:
                                 self.logger.debug(f"GPS sync output: {result.stdout.strip()}")
                             self.system_time_synced = True
                             self.first_fix_received = True
+                            self.last_time_sync = current_time
                         else:
                             error_msg = result.stderr.strip() if result.stderr.strip() else result.stdout.strip()
                             if not error_msg:
@@ -390,12 +391,13 @@ class GPS:
                     self.logger.warning("GPS time sync helper script not available")
                 except Exception as e:
                     self.logger.warning(f"Could not sync system time: {e}")
-                else:
-                    self.logger.info(f"🕐 GPS TIME CHECK: System time already accurate (diff: {time_diff:.1f}s)")
-                    if not self.first_fix_received:
-                        self.system_time_synced = True
-                        self.first_fix_received = True            
-                        self.last_time_sync = current_time
+            else:
+                # Time difference is small, no sync needed
+                self.logger.debug(f"🕐 GPS TIME CHECK: System time already accurate (diff: {time_diff:.1f}s)")
+                if not self.first_fix_received:
+                    self.system_time_synced = True
+                    self.first_fix_received = True            
+                    self.last_time_sync = current_time
             
         except Exception as e:
             self.logger.warning(f"Error in time synchronization: {e}")
