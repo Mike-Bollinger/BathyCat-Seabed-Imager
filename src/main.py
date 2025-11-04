@@ -115,6 +115,9 @@ class BathyCatService:
         self.last_health_check = 0
         self.health_check_interval = 10.0  # seconds
         
+        # Error tracking
+        self.consecutive_errors = 0
+        
         # Setup signal handlers
         self._setup_signal_handlers()
     
@@ -298,7 +301,6 @@ class BathyCatService:
         self.logger.info("Main capture loop started")
         
         last_capture_time = 0
-        consecutive_errors = 0
         max_consecutive_errors = 10
         
         while not self.shutdown_event.is_set():
@@ -315,26 +317,26 @@ class BathyCatService:
                     # Attempt image capture
                     if self._capture_image():
                         last_capture_time = current_time
-                        consecutive_errors = 0
+                        self.consecutive_errors = 0
                     else:
-                        consecutive_errors += 1
+                        self.consecutive_errors += 1
                         self.status.errors_encountered += 1
                         self.status.last_error_time = datetime.now()
                         
                         # Handle excessive errors
-                        if consecutive_errors >= max_consecutive_errors:
-                            self.logger.error(f"Too many consecutive errors ({consecutive_errors}), attempting recovery")
+                        if self.consecutive_errors >= max_consecutive_errors:
+                            self.logger.error(f"Too many consecutive errors ({self.consecutive_errors}), attempting recovery")
                             if not self._attempt_recovery():
                                 self.logger.critical("Recovery failed, shutting down")
                                 break
-                            consecutive_errors = 0
+                            self.consecutive_errors = 0
                 
                 # Small sleep to prevent excessive CPU usage
                 time.sleep(0.01)
                 
             except Exception as e:
                 self.logger.error(f"Error in main loop: {e}")
-                consecutive_errors += 1
+                self.consecutive_errors += 1
                 time.sleep(1.0)  # Brief pause on error
         
         self.logger.info("Main capture loop ended")
@@ -484,19 +486,71 @@ class BathyCatService:
             return
         
         try:
-            # Get GPS fix status
+            # Get GPS status
             has_gps_fix = False
+            gps_acquiring = False
+            
             if self.gps:
                 fix = self.gps.get_current_fix()
                 has_gps_fix = fix is not None and fix.is_valid
+                # GPS is acquiring if it's connected and running but no valid fix
+                gps_acquiring = (self.gps.is_connected and self.gps.is_running and 
+                               not has_gps_fix)
             
-            # Update all LED statuses
-            self.led_manager.update_status(
-                camera_healthy=self.component_health['camera'],
-                gps_healthy=self.component_health['gps'],
-                storage_healthy=self.component_health['storage'],
-                has_gps_fix=has_gps_fix
+            # Update GPS LED specifically
+            if self.gps and (self.gps.is_connected and self.gps.is_running):
+                self.led_manager.set_gps_status(has_gps_fix, acquiring=gps_acquiring)
+            else:
+                self.led_manager.set_gps_status(False, acquiring=False)
+            
+            # Update other LED statuses
+            self.led_manager.set_camera_status(
+                active=self.component_health['camera'],
+                error=not self.component_health['camera']
             )
+            
+            # Update error LED for critical failures
+            critical_errors = []
+            
+            # Storage failure (most critical - can't save images)
+            if not self.component_health['storage']:
+                critical_errors.append("storage")
+            
+            # Camera completely failed (can't capture images)
+            if self.camera and not self.camera.is_connected:
+                critical_errors.append("camera_disconnected")
+            
+            # GPS hardware failure (if GPS is required)
+            if self.require_gps_fix and self.gps and not self.gps.is_connected:
+                critical_errors.append("gps_disconnected")
+            
+            # Too many consecutive capture errors
+            if self.consecutive_errors > 5:
+                critical_errors.append("capture_failure")
+            
+            # Low disk space (less than 1GB)
+            if self.storage and hasattr(self.storage, 'free_space'):
+                if self.storage.free_space < 1.0:  # Less than 1GB
+                    critical_errors.append("low_disk_space")
+            
+            # Check for system temperature issues (if available)
+            try:
+                import psutil
+                if hasattr(psutil, 'sensors_temperatures'):
+                    temps = psutil.sensors_temperatures()
+                    if 'cpu_thermal' in temps and temps['cpu_thermal']:
+                        cpu_temp = temps['cpu_thermal'][0].current
+                        if cpu_temp > 80.0:  # Critical temperature threshold
+                            critical_errors.append("high_temperature")
+            except (ImportError, Exception):
+                pass  # psutil not available or temperature not readable
+            
+            has_critical_error = len(critical_errors) > 0
+            self.led_manager.set_error_condition(has_critical_error, critical=has_critical_error)
+            
+            # Log critical errors for debugging
+            if has_critical_error:
+                self.logger.warning(f"Critical errors detected: {', '.join(critical_errors)}")
             
         except Exception as e:
             self.logger.debug(f"LED status update error: {e}")

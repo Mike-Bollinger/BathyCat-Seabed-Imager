@@ -358,6 +358,11 @@ class LEDManager:
         """
         Set GPS status indicator.
         
+        LED Behavior:
+        - OFF: GPS disabled/failed or no GPS hardware
+        - SLOW_BLINK: GPS hardware connected, searching for fix
+        - ON (Solid): GPS has valid fix with sufficient satellites
+        
         Args:
             has_fix: True if GPS has valid fix, False otherwise
             acquiring: True if currently acquiring fix, False otherwise
@@ -397,9 +402,19 @@ class LEDManager:
         """
         Set error condition indicator. Only illuminates for critical errors.
         
+        LED Behavior:
+        - OFF: No critical errors detected
+        - ON (Solid Red): Critical system error requiring attention
+          - Storage failure (can't save images)
+          - Camera hardware disconnected
+          - GPS hardware failure (when required)
+          - Excessive consecutive capture failures (>5)
+          - Low disk space (<1GB)
+          - High system temperature (>80°C)
+        
         Args:
             error: True if any error condition exists, False otherwise
-            critical: True if the error is critical (e.g., storage failure)
+            critical: True if the error is critical requiring immediate attention
         """
         self.system_states['error_condition'] = error
         

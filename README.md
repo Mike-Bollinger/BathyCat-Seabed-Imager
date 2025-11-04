@@ -459,7 +459,27 @@ The BathyImager system uses GPIO-controlled LEDs to provide visual status feedba
 | Camera LED | Yellow | SOS pattern (... --- ...) | Camera error/failure |
 | Camera LED | Off | Camera inactive or disabled |
 | **Error LED** (GPIO 25) | Red | Off | No critical errors |
-| Error LED | Red | Solid | Critical system error (e.g., storage failure) |
+| Error LED | Red | Solid | Critical system error - see troubleshooting |
+
+#### Critical Error Conditions (Red LED)
+
+When the red error LED is solid, it indicates one or more critical system failures that prevent normal operation:
+
+| Error Condition | Description | Troubleshooting |
+|----------------|-------------|-----------------|
+| **Storage Failure** | USB drive disconnected, full, or write-protected | Check USB connection, free space, and mount status |
+| **Camera Disconnected** | USB camera hardware failure or disconnection | Check USB camera connection and power |
+| **GPS Disconnected** | GPS hardware failure (when GPS required) | Check GPS USB connection and device detection |
+| **Capture Failure** | More than 5 consecutive image capture failures | Check camera and storage health, restart service |
+| **Low Disk Space** | Less than 1GB of free storage space remaining | Clean up old files or replace storage device |
+| **High Temperature** | CPU temperature above 80°C (overheating) | Check cooling, ventilation, and system load |
+
+**Troubleshooting Steps for Red LED:**
+1. Check system logs: `sudo journalctl -u bathyimager -n 50`
+2. Run hardware diagnostics: `./scripts/hardware_diagnostics.sh all`
+3. Check USB connections and power
+4. Verify disk space: `df -h /media/usb`
+5. Restart service: `sudo systemctl restart bathyimager`
 
 #### LED Hardware Setup
 
