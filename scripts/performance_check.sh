@@ -41,7 +41,7 @@ echo "🔧 Performance Optimization Options:"
 echo "==================================="
 echo "1. 📺 Reduce camera resolution (1920x1080 → 1280x720)"
 echo "2. 📷 Reduce JPEG quality (85 → 75)"  
-echo "3. 📝 Check log level (should be INFO, not DEBUG)"
+echo "3. 📝 Check log level (should be INFO, not DEBUG - DEBUG severely impacts performance)"
 echo "4. 🔍 Show current system performance"
 echo "5. ⚡ Apply all optimizations automatically"
 echo "6. 🚫 Skip optimizations"
@@ -71,7 +71,7 @@ case $choice in
         LOG_LEVEL=$(grep '"log_level"' config/bathyimager_config.json | sed 's/.*: "//' | sed 's/".*//')
         echo "   Current log level: $LOG_LEVEL"
         if [ "$LOG_LEVEL" = "DEBUG" ]; then
-            echo "   ⚠️  DEBUG logging can slow performance"
+            echo "   ❌ DEBUG logging SEVERELY impacts performance (can reduce FPS by 50%+)"
             read -p "   Change to INFO? (y/n): " change_log
             if [ "$change_log" = "y" ]; then
                 sudo systemctl stop bathyimager

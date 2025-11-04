@@ -374,37 +374,19 @@ class GPS:
                             self.first_fix_received = True
                             self.last_time_sync = current_time
                         else:
-                            # Enhanced error message handling
-                            stderr_msg = result.stderr.strip() if result.stderr else ""
-                            stdout_msg = result.stdout.strip() if result.stdout else ""
+                            # Simplified error handling (avoid performance impact of excessive logging)
+                            error_msg = result.stderr.strip() if result.stderr else result.stdout.strip()
+                            if not error_msg:
+                                error_msg = f"Script failed with exit code {result.returncode}"
                             
-                            if stderr_msg:
-                                error_msg = stderr_msg
-                            elif stdout_msg:
-                                error_msg = stdout_msg
-                            else:
-                                error_msg = f"Script failed with exit code {result.returncode} (no output)"
-                            
-                            # Log detailed error information
+                            # Single error log to avoid performance impact
                             self.logger.error(f"🕐 GPS TIME SYNC FAILED: {error_msg}")
-                            self.logger.error(f"GPS sync command: sudo {script_path} '{time_str}'")
-                            self.logger.error(f"Return code: {result.returncode}")
-                            self.logger.error(f"GPS time: {gps_utc} UTC, System time: {datetime.fromtimestamp(system_timestamp, tz=timezone.utc)} UTC")
-                            self.logger.error(f"Time difference: {time_diff:.2f} seconds")
-                            if stdout_msg:
-                                self.logger.debug(f"Script stdout: {stdout_msg}")
-                            if stderr_msg:
-                                self.logger.debug(f"Script stderr: {stderr_msg}")
-                                
-                            # Additional diagnostics
-                            if result.returncode == 1:
-                                self.logger.error("GPS sync script reported a general error - check NTP status and permissions")
-                            elif result.returncode == 126:
-                                self.logger.error("GPS sync script is not executable - check file permissions")
-                            elif result.returncode == 127:
-                                self.logger.error("GPS sync script not found - check file path")
-                            else:
-                                self.logger.error(f"GPS sync script returned unexpected exit code: {result.returncode}")
+                            
+                            # Only log details in debug mode to avoid performance impact
+                            if self.logger.isEnabledFor(logging.DEBUG):
+                                self.logger.debug(f"GPS sync command: sudo {script_path} '{time_str}'")
+                                self.logger.debug(f"Return code: {result.returncode}")
+                                self.logger.debug(f"Time difference: {time_diff:.2f}s")
                     else:
                         self.logger.warning(f"GPS time sync helper script not found: {script_path}")
                         
