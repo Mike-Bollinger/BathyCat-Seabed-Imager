@@ -54,6 +54,10 @@ class StorageManager:
         self.cleanup_threshold_gb = config.get('cleanup_threshold_gb', 10.0)
         self.days_to_keep = config.get('days_to_keep', 30)
         
+        # Filename generation settings
+        self.use_sequence_counter = config.get('use_sequence_counter', False)
+        self.filename_format = config.get('filename_format', 'timestamp')  # 'timestamp' or 'counter'
+        
         # Define structured paths
         self.images_path = os.path.join(self.base_path, 'images')
         
@@ -214,12 +218,17 @@ class StorageManager:
         except Exception as e:
             self.logger.debug(f"Error verifying directory structure: {e}")
     
-    def get_image_path(self, timestamp: Optional[datetime] = None) -> str:
+    def get_image_path(self, timestamp: Optional[datetime] = None, sequence_counter: Optional[int] = None) -> str:
         """
-        Generate organized file path for image: storage/images/YYYYMMDD/{prefix}_timestamp.jpg
+        Generate organized file path for image with improved timestamp accuracy.
+        
+        Supports two filename formats:
+        1. Timestamp format: {prefix}_YYYYMMDD_HHMMSS_mmm.jpg (milliseconds)
+        2. Counter format: {prefix}_YYYYMMDD_HHMMSS_NNN.jpg (sequence counter)
         
         Args:
             timestamp: Image timestamp (uses current time if None)
+            sequence_counter: Optional sequence counter for unique naming
             
         Returns:
             str: Full path for image file
@@ -232,18 +241,29 @@ class StorageManager:
         dir_path = os.path.join(self.images_path, date_dir)
         os.makedirs(dir_path, exist_ok=True)
         
-        # Generate filename with timestamp and microseconds for uniqueness
-        filename = f"{self.filename_prefix}_{timestamp.strftime('%Y%m%d_%H%M%S_%f')[:-3]}.jpg"
+        # Generate base filename with timestamp
+        base_timestamp = timestamp.strftime('%Y%m%d_%H%M%S')
+        
+        if self.use_sequence_counter and sequence_counter is not None:
+            # Counter format: More reliable for high-frequency capture
+            # Format: bathyimager_20251105_143750_001.jpg
+            filename = f"{self.filename_prefix}_{base_timestamp}_{sequence_counter:03d}.jpg"
+        else:
+            # Timestamp format: Traditional millisecond precision
+            # Format: bathyimager_20251105_143750_547.jpg (547 = milliseconds)
+            milliseconds = int(timestamp.microsecond / 1000)  # Convert microseconds to milliseconds
+            filename = f"{self.filename_prefix}_{base_timestamp}_{milliseconds:03d}.jpg"
         
         return os.path.join(dir_path, filename)
     
-    def save_image(self, image_data: bytes, timestamp: Optional[datetime] = None) -> Optional[str]:
+    def save_image(self, image_data: bytes, timestamp: Optional[datetime] = None, sequence_counter: Optional[int] = None) -> Optional[str]:
         """
         Save image to storage with organized naming.
         
         Args:
             image_data: Image data bytes
             timestamp: Image timestamp
+            sequence_counter: Optional sequence counter for unique naming
             
         Returns:
             str: Saved file path, or None if save failed
@@ -265,7 +285,7 @@ class StorageManager:
                     return None
             
             # Get image path
-            filepath = self.get_image_path(timestamp)
+            filepath = self.get_image_path(timestamp, sequence_counter)
             
             # Write image data
             with open(filepath, 'wb') as f:

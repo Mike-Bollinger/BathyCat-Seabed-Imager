@@ -98,6 +98,10 @@ class BathyCatService:
         self.is_running = False
         self.shutdown_requested = False
         
+        # Image sequence counter for unique filenames (resets daily)
+        self.image_sequence_counter = 0
+        self.current_date = datetime.now().date()
+        
         # Threading
         self.main_thread: Optional[threading.Thread] = None
         self.status_thread: Optional[threading.Thread] = None
@@ -444,9 +448,11 @@ class BathyCatService:
             # TIMING: Start capture pipeline measurement  
             pipeline_start = time.perf_counter()
             
+            # TIMING CRITICAL: Capture timestamp BEFORE camera frame for accuracy
+            # This represents the moment we initiate capture, which is closer to actual capture time
+            timestamp = self._get_precise_capture_timestamp()
+            
             frame = self.camera.capture_frame()
-            # TIMING CRITICAL: Capture timestamp immediately after camera frame for accuracy
-            timestamp = self._get_accurate_timestamp_after_capture()
             capture_time = (time.perf_counter() - pipeline_start) * 1000  # ms
             
             if frame is None:
@@ -477,9 +483,12 @@ class BathyCatService:
             processed_image = self.image_processor.process_frame(frame, gps_fix, timestamp, camera_params)
             process_time = (time.perf_counter() - process_start) * 1000  # ms
             
+            # Update sequence counter for unique filenames
+            self._update_sequence_counter(timestamp)
+            
             # Save to storage
             save_start = time.perf_counter()
-            filepath = self.storage.save_image(processed_image, timestamp)
+            filepath = self.storage.save_image(processed_image, timestamp, self.image_sequence_counter)
             save_time = (time.perf_counter() - save_start) * 1000  # ms
             
             # Calculate total pipeline time
@@ -532,18 +541,44 @@ class BathyCatService:
         
         return timestamp
         
-    def _get_accurate_timestamp_after_capture(self) -> datetime:
+    def _get_precise_capture_timestamp(self) -> datetime:
         """
-        Get accurate timestamp immediately after camera capture for maximum precision.
-        Uses GPS-synchronized system time when available for accuracy.
+        Get precise timestamp immediately BEFORE camera capture initiation.
+        
+        This approach captures the timestamp at the moment we request the camera frame,
+        which is much closer to the actual capture time than waiting until after
+        the frame is retrieved and processed.
         
         Returns:
-            datetime: UTC timestamp captured at the moment of camera frame acquisition
+            datetime: UTC timestamp representing the moment of capture initiation
         """
-        # PERFORMANCE: Use datetime.now() immediately after camera capture for timing precision
-        # This is called right after camera.capture_frame() to minimize lag between
-        # actual image capture and timestamp recording - critical for 2 m/s deployment accuracy
+        # PERFORMANCE: Capture timestamp immediately before camera.capture_frame()
+        # This minimizes the delay between timestamp recording and actual image capture
+        # Critical for high-speed vehicle deployment accuracy (2+ m/s)
         return datetime.now(timezone.utc)
+    
+
+    
+    def _update_sequence_counter(self, timestamp: datetime) -> None:
+        """
+        Update image sequence counter, resetting daily for organized numbering.
+        
+        Args:
+            timestamp: Current image timestamp
+        """
+        current_date = timestamp.date()
+        
+        # Reset counter if date changed (new day)
+        if current_date != self.current_date:
+            self.current_date = current_date
+            self.image_sequence_counter = 1
+            self.logger.info(f"📅 Date changed to {current_date}, resetting image sequence counter")
+        else:
+            self.image_sequence_counter += 1
+            
+        # Log periodic sequence info for debugging
+        if self.image_sequence_counter % 100 == 0:
+            self.logger.debug(f"📊 Image sequence counter: {self.image_sequence_counter}")
     
     def _check_component_health(self) -> None:
         """Check health of all system components."""
@@ -754,8 +789,8 @@ class BathyCatService:
         """Shutdown the service gracefully."""
         if self.shutdown_requested:
             return
-        
-        self.logger.info("Shutting down BathyCat service")
+
+        self.logger.info("Shutting down BathyImager service")
         self.shutdown_requested = True
         self.shutdown_event.set()
         
@@ -778,7 +813,7 @@ class BathyCatService:
         if self.led_manager:
             self.led_manager.cleanup()
         
-        self.logger.info("BathyCat service shutdown complete")
+        self.logger.info("BathyImager service shutdown complete")
     
     def run(self) -> int:
         """
