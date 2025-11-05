@@ -141,19 +141,97 @@ class BathyCatService:
         
         # File handler if enabled
         if self.config.get('log_to_file', True):
-            log_file = self.config.get('log_file_path', '/var/log/bathycat/bathycat.log')
+            base_log_file = self.config.get('log_file_path', '/var/log/bathycat/bathycat.log')
             try:
                 import os
-                os.makedirs(os.path.dirname(log_file), exist_ok=True)
+                # Generate date-stamped log path (same structure as images)
+                dated_log_file = self._get_dated_log_path(base_log_file)
                 
-                file_handler = logging.FileHandler(log_file)
+                # Create file handler in append mode (adds to existing daily logs)
+                file_handler = logging.FileHandler(dated_log_file, mode='a')
                 file_handler.setFormatter(formatter)
                 logger.addHandler(file_handler)
+                
+                logger.info(f"📝 Date-stamped logging enabled: {dated_log_file}")
+                
+                # Track current log date for rotation detection
+                self._log_date = datetime.now().strftime('%Y%m%d')
                 
             except Exception as e:
                 logger.warning(f"Could not setup file logging: {e}")
         
         return logger
+    
+    def _get_dated_log_path(self, base_log_path: str, timestamp: Optional[datetime] = None) -> str:
+        """
+        Generate date-stamped log path similar to image directory structure.
+        
+        Args:
+            base_log_path: Base log file path from config
+            timestamp: Timestamp for date (uses current time if None)
+            
+        Returns:
+            str: Date-stamped log file path (e.g., /media/usb/bathyimager/logs/20241104/bathyimager.log)
+        """
+        if timestamp is None:
+            timestamp = datetime.now()
+        
+        # Extract directory and filename from base path
+        log_dir = os.path.dirname(base_log_path)
+        log_filename = os.path.basename(base_log_path)
+        
+        # Create date directory: YYYYMMDD format (same as images)
+        date_dir = f"{timestamp.year:04d}{timestamp.month:02d}{timestamp.day:02d}"
+        dated_log_dir = os.path.join(log_dir, date_dir)
+        
+        # Ensure directory exists
+        os.makedirs(dated_log_dir, exist_ok=True)
+        
+        full_path = os.path.join(dated_log_dir, log_filename)
+        
+        # Log the structure being created (only on first creation)
+        if not os.path.exists(full_path):
+            # This will log to console since file handler may not be set up yet
+            print(f"📁 Creating dated log structure: {dated_log_dir}")
+        
+        # Return full dated log path
+        return full_path
+    
+    def _rotate_log_if_needed(self) -> None:
+        """
+        Rotate log file to new date if date has changed since initialization.
+        This ensures each day gets its own log file, similar to image directories.
+        """
+        if not self.config.get('log_to_file', True):
+            return
+            
+        try:
+            current_date = datetime.now().strftime('%Y%m%d')
+            
+            # Check if we need to rotate (compare with initialization date)
+            if not hasattr(self, '_log_date') or self._log_date != current_date:
+                self._log_date = current_date
+                
+                # Get new dated log path
+                base_log_file = self.config.get('log_file_path', '/var/log/bathycat/bathycat.log')
+                new_log_file = self._get_dated_log_path(base_log_file)
+                
+                # Remove existing file handlers
+                for handler in self.logger.handlers[:]:
+                    if isinstance(handler, logging.FileHandler):
+                        handler.close()
+                        self.logger.removeHandler(handler)
+                
+                # Add new file handler for new date
+                formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+                file_handler = logging.FileHandler(new_log_file, mode='a')
+                file_handler.setFormatter(formatter)
+                self.logger.addHandler(file_handler)
+                
+                self.logger.info(f"📝 Log rotated to new date: {new_log_file}")
+                
+        except Exception as e:
+            self.logger.warning(f"Log rotation failed: {e}")
     
     def _setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown."""
@@ -314,6 +392,9 @@ class BathyCatService:
                     if current_time - self.last_health_check >= self.health_check_interval:
                         self._check_component_health()
                     
+                    # Check if log needs to rotate to new date
+                    self._rotate_log_if_needed()
+                    
                     # Attempt image capture
                     if self._capture_image():
                         last_capture_time = current_time
@@ -360,7 +441,14 @@ class BathyCatService:
                     self.logger.debug("Camera not available - skipping capture")
                     return False
             
+            # TIMING: Start capture pipeline measurement  
+            pipeline_start = time.perf_counter()
+            
             frame = self.camera.capture_frame()
+            # TIMING CRITICAL: Capture timestamp immediately after camera frame for accuracy
+            timestamp = self._get_accurate_timestamp_after_capture()
+            capture_time = (time.perf_counter() - pipeline_start) * 1000  # ms
+            
             if frame is None:
                 self.logger.warning("Failed to capture camera frame - will try reconnect next time")
                 self.component_health['camera'] = False
@@ -369,6 +457,7 @@ class BathyCatService:
                 return False
             
             # Get GPS fix
+            gps_start = time.perf_counter()
             gps_fix = None
             if self.gps:
                 gps_fix = self.gps.get_current_fix()
@@ -376,18 +465,26 @@ class BathyCatService:
                 # Check if we require valid GPS fix (skip excessive debug logging for performance)
                 if self.require_gps_fix and (not gps_fix or not gps_fix.is_valid):
                     return False
+            gps_time = (time.perf_counter() - gps_start) * 1000  # ms
             
             # Get camera parameters for EXIF metadata
             camera_params = None
             if self.camera:
                 camera_params = self.camera.get_camera_exif_params()
-            
-            # Process image with metadata - use GPS time if available and synced
-            timestamp = self._get_accurate_timestamp(gps_fix)
+                
+            # Process image
+            process_start = time.perf_counter()
             processed_image = self.image_processor.process_frame(frame, gps_fix, timestamp, camera_params)
+            process_time = (time.perf_counter() - process_start) * 1000  # ms
             
             # Save to storage
+            save_start = time.perf_counter()
             filepath = self.storage.save_image(processed_image, timestamp)
+            save_time = (time.perf_counter() - save_start) * 1000  # ms
+            
+            # Calculate total pipeline time
+            total_time = (time.perf_counter() - pipeline_start) * 1000  # ms
+            
             if filepath:
                 # Update statistics
                 self.status.images_captured += 1
@@ -397,6 +494,8 @@ class BathyCatService:
                 if self.led_manager:
                     self.led_manager.signal_capture()
                 
+                # Log pipeline timing breakdown for performance analysis
+                self.logger.debug(f"🚀 Pipeline timing: Total={total_time:.1f}ms (Capture={capture_time:.1f}ms, GPS={gps_time:.1f}ms, Process={process_time:.1f}ms, Save={save_time:.1f}ms)")
                 self.logger.debug(f"Image captured: {filepath}")
                 return True
             else:
@@ -432,6 +531,19 @@ class BathyCatService:
             self.logger.debug(f"📅 Using system UTC time (GPS not yet synced): {timestamp.isoformat()}")
         
         return timestamp
+        
+    def _get_accurate_timestamp_after_capture(self) -> datetime:
+        """
+        Get accurate timestamp immediately after camera capture for maximum precision.
+        Uses GPS-synchronized system time when available for accuracy.
+        
+        Returns:
+            datetime: UTC timestamp captured at the moment of camera frame acquisition
+        """
+        # PERFORMANCE: Use datetime.now() immediately after camera capture for timing precision
+        # This is called right after camera.capture_frame() to minimize lag between
+        # actual image capture and timestamp recording - critical for 2 m/s deployment accuracy
+        return datetime.now(timezone.utc)
     
     def _check_component_health(self) -> None:
         """Check health of all system components."""

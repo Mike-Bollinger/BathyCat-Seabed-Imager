@@ -40,7 +40,7 @@
   
   "log_level": "INFO",
   "log_to_file": true,
-  "log_file_path": "/var/log/bathyimager/bathyimager.log",
+  "log_file_path": "/media/usb/bathyimager/logs/bathyimager.log",
   "log_max_size_mb": 100,
   "log_backup_count": 5,
   

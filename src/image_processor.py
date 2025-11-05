@@ -22,6 +22,7 @@ from datetime import datetime
 from PIL import Image, ExifTags
 import piexif
 import numpy as np
+import cv2
 from gps import GPSFix
 
 
@@ -58,6 +59,16 @@ class ImageProcessor:
         
         if self.image_format not in ['JPEG', 'PNG', 'TIFF']:
             raise ImageProcessingError(f"Unsupported image format: {self.image_format}")
+            
+        # PERFORMANCE: Enable OpenCV optimizations (SSE2, AVX, NEON on ARM)
+        # This can provide 2x speedup for color conversions and image operations
+        if not cv2.useOptimized():
+            cv2.setUseOptimized(True)
+            self.logger.info("OpenCV optimizations enabled for better performance")
+        else:
+            self.logger.debug("OpenCV optimizations already enabled")
+            
+        self.logger.info(f"ImageProcessor initialized - Format: {self.image_format}, Quality: {self.jpeg_quality}, Metadata: {self.enable_metadata}")
     
     def process_frame(self, frame: np.ndarray, gps_fix: Optional[GPSFix] = None, 
                      timestamp: Optional[datetime] = None, camera_params: Optional[Dict[str, Any]] = None) -> bytes:
@@ -74,28 +85,46 @@ class ImageProcessor:
             bytes: Processed image data
         """
         try:
+            # TIMING: Start performance measurement
+            start_tick = cv2.getTickCount()
+            
             if timestamp is None:
                 timestamp = datetime.utcnow()
             
-            # Convert BGR to RGB (OpenCV uses BGR, PIL uses RGB)
+            # PERFORMANCE: Convert BGR to RGB using optimized cv2.cvtColor (hardware accelerated)
+            # This is faster than numpy slicing on ARM processors
+            color_start = cv2.getTickCount()
             if len(frame.shape) == 3 and frame.shape[2] == 3:
-                frame_rgb = frame[:, :, ::-1]  # BGR to RGB
+                # Use OpenCV's optimized BGR→RGB conversion (supports SSE/AVX/NEON)
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             else:
                 frame_rgb = frame
+            color_time = (cv2.getTickCount() - color_start) / cv2.getTickFrequency() * 1000  # ms
             
             # Create PIL Image
+            pil_start = cv2.getTickCount()
             image = Image.fromarray(frame_rgb)
+            pil_time = (cv2.getTickCount() - pil_start) / cv2.getTickFrequency() * 1000  # ms
             
             # Add metadata if enabled
+            metadata_start = cv2.getTickCount()
             if self.enable_metadata:
                 self.logger.debug(f"Processing metadata - GPS: {'Yes' if gps_fix else 'No'}, Camera params: {'Yes' if camera_params else 'No'}")
                 image = self._add_metadata(image, gps_fix, timestamp, camera_params)
             else:
                 self.logger.warning("Metadata disabled - images will have no GPS or camera data")
+            metadata_time = (cv2.getTickCount() - metadata_start) / cv2.getTickFrequency() * 1000  # ms
             
             # Convert to bytes
+            convert_start = cv2.getTickCount()
             image_bytes = self._convert_to_bytes(image)
+            convert_time = (cv2.getTickCount() - convert_start) / cv2.getTickFrequency() * 1000  # ms
             
+            # Calculate total processing time
+            total_time = (cv2.getTickCount() - start_tick) / cv2.getTickFrequency() * 1000  # ms
+            
+            # Log timing breakdown for performance analysis
+            self.logger.debug(f"⏱️  Image processing timing: Total={total_time:.1f}ms (Color={color_time:.1f}ms, PIL={pil_time:.1f}ms, Metadata={metadata_time:.1f}ms, JPEG={convert_time:.1f}ms)")
             self.logger.debug(f"Processed image: {len(image_bytes)} bytes, format: {self.image_format}")
             return image_bytes
             
