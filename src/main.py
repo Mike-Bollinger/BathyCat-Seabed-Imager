@@ -145,9 +145,15 @@ class BathyCatService:
         
         # File handler if enabled
         if self.config.get('log_to_file', True):
-            base_log_file = self.config.get('log_file_path', '/var/log/bathycat/bathycat.log')
+            base_log_file = self.config.get('log_file_path', '/media/usb/bathyimager/logs/bathyimager.log')
             try:
                 import os
+                # Ensure USB base directory exists
+                base_dir = os.path.dirname(base_log_file)
+                if not os.path.exists(base_dir):
+                    logger.warning(f"USB log directory doesn't exist, creating: {base_dir}")
+                    os.makedirs(base_dir, exist_ok=True)
+                
                 # Generate date-stamped log path (same structure as images)
                 dated_log_file = self._get_dated_log_path(base_log_file)
                 
@@ -162,7 +168,18 @@ class BathyCatService:
                 self._log_date = datetime.now().strftime('%Y%m%d')
                 
             except Exception as e:
-                logger.warning(f"Could not setup file logging: {e}")
+                logger.warning(f"Could not setup file logging to USB: {e}")
+                logger.warning(f"Trying fallback logging to /tmp/bathyimager.log")
+                try:
+                    # Fallback to temporary directory if USB fails
+                    fallback_path = "/tmp/bathyimager.log"
+                    file_handler = logging.FileHandler(fallback_path, mode='a')
+                    file_handler.setFormatter(formatter)
+                    logger.addHandler(file_handler)
+                    logger.warning(f"📝 Fallback logging enabled: {fallback_path}")
+                except Exception as e2:
+                    logger.error(f"Could not setup any file logging: {e2}")
+                    logger.error("Only console logging will be available")
         
         return logger
     
@@ -217,7 +234,7 @@ class BathyCatService:
                 self._log_date = current_date
                 
                 # Get new dated log path
-                base_log_file = self.config.get('log_file_path', '/var/log/bathycat/bathycat.log')
+                base_log_file = self.config.get('log_file_path', '/media/usb/bathyimager/logs/bathyimager.log')
                 new_log_file = self._get_dated_log_path(base_log_file)
                 
                 # Remove existing file handlers
