@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """
-GPS Tagging Diagnostic Script for BathyCat Seabed Imager
-=======================================================
+BathyCat GPS Troubleshooting Tool
+================================
 
-This script helps diagnose GPS tagging issues by:
-1. Testing GPS connection and data reception
-2. Testing camera functionality with auto settings
-3. Creating a test image with GPS metadata
-4. Verifying GPS metadata can be extracted from the test image
+This script provides comprehensive GPS testing and troubleshooting for
+the BathyCat Seabed Imager system.
 
-Usage: python gps_diagnostic.py
+Features:
+- GPS device detection and connection testing
+- NMEA sentence parsing validation
+- GPS time synchronization verification
+- Coordinate accuracy testing
+- Satellite signal strength analysis
+- EXIF metadata validation
+- Configuration recommendations
+
+Usage: python3 gps_troubleshoot.py [--detailed] [--port /dev/ttyUSB0]
 """
 
 import sys

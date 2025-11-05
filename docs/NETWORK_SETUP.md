@@ -1,15 +1,16 @@
-# BathyImager Network Configuration Guide
+# BathyCat Seabed Imager Network Configuration Guide
 
-This guide explains how to configure dual Ethernet + WiFi connectivity for the BathyImager Seabed Imager system running on Raspberry Pi.
+Complete network setup guide for the BathyCat Seabed Imager system with dual connectivity and intelligent failover.
 
 ## Overview
 
-The BathyImager system supports simultaneous Ethernet and WiFi connections with automatic failover:
+The BathyCat system provides robust network connectivity essential for GPS time synchronization, remote monitoring, and system updates:
 
-- **Ethernet (eth0)**: Primary connection with highest priority (metric 100)
-- **WiFi (wlan0)**: Secondary/backup connection with lower priority (metric 300)
-- **Automatic Routing**: Traffic prefers Ethernet when available, falls back to WiFi
-- **Seamless Failover**: Maintains connectivity if one interface fails
+- **🔌 Ethernet (eth0)**: Primary connection with highest priority (metric 100)
+- **📶 WiFi (wlan0)**: Secondary/backup connection with lower priority (metric 300)
+- **🔄 Automatic Routing**: Traffic prefers Ethernet when available, seamlessly falls back to WiFi
+- **⚡ Seamless Failover**: Maintains connectivity during cable disconnections or WiFi outages
+- **🛠️ Diagnostic Tools**: Built-in network testing and troubleshooting framework
 
 ## ⚠️ No Internet on Pi? - Ethernet Internet Sharing Solution
 
@@ -347,11 +348,33 @@ sudo ./scripts/wifi_config.sh
 
 ### 4. Get Online and Install Missing Packages
 
-You have two options to get the required packages:
+You have multiple options to get the required packages:
 
-#### Option A: Share Internet via Ethernet (Recommended)
+#### Option A: Use Automated Setup Script (Recommended)
 
-If your computer has internet, share it through the Ethernet connection:
+The BathyCat system includes an automated internet sharing setup script:
+
+**On Windows (your computer):**
+```powershell
+# The BathyCat system can guide you through this process
+# See the Internet Sharing section below for complete automation
+```
+
+**On Raspberry Pi:**
+```bash
+# Use the automated setup script for internet sharing
+sudo chmod +x scripts/setup_shared_internet.sh
+sudo ./scripts/setup_shared_internet.sh
+
+# This script will:
+# - Configure Pi to use Windows computer as gateway (192.168.137.1)
+# - Set appropriate DNS servers
+# - Test connectivity
+# - Install required packages automatically
+# - Verify network functionality
+```
+
+#### Option B: Manual Internet Sharing Setup
 
 **On Windows (your computer):**
 ```cmd
@@ -371,13 +394,19 @@ sudo ip addr add 192.168.137.100/24 dev eth0
 sudo ip route add default via 192.168.137.1 dev eth0
 echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
 
-# Now install packages
+# Test connectivity
+ping -c 3 google.com
+
+# Install packages
 sudo apt update
 sudo apt install -y dhcpcd5 wpasupplicant wireless-tools net-tools iproute2 dnsutils
 
 # Enable services
 sudo systemctl enable dhcpcd
 sudo systemctl enable wpa_supplicant@wlan0
+
+# Test network setup
+python3 tests/network_test.sh
 ```
 
 #### Option B: Include Packages in Offline Transfer
@@ -596,13 +625,73 @@ ping -c 3 8.8.8.8
 ip route list | grep default
 ```
 
+## Network Diagnostics and Testing
+
+### Automated Network Diagnostics
+```bash
+# Comprehensive network testing and analysis
+python3 tests/troubleshoot.py --network
+
+# Dedicated network connectivity testing
+./tests/network_test.sh
+
+# Continuous network monitoring
+./tests/network_test.sh --continuous
+
+# Network performance analysis
+python3 tests/performance_analyzer.py --network-analysis
+```
+
+### Network Status and Health Checks
+```bash
+# Quick network configuration overview
+./scripts/network_status.sh
+
+# Full network connectivity testing
+./tests/network_test.sh --full
+
+# System health with network focus
+python3 tests/system_health_check.py --network-focus
+
+# Test network interface performance
+python3 tests/performance_analyzer.py --network-benchmark
+```
+
+### Network Failover Testing
+```bash
+# Test automatic failover behavior
+python3 tests/network_test.sh --failover-test
+
+# Monitor network stability during failover
+python3 tests/performance_analyzer.py --monitor --network
+
+# Validate dual network configuration
+python3 tests/troubleshoot.py --component network
+```
+
 ## Troubleshooting
+
+### Automated Troubleshooting (Start Here)
+```bash
+# First step: Run automated network diagnostics
+python3 tests/troubleshoot.py --network
+
+# This will automatically:
+# ✅ Check interface status and configuration
+# ✅ Test connectivity on both Ethernet and WiFi
+# ✅ Verify routing and DNS configuration
+# ✅ Test failover behavior
+# ✅ Provide specific recommendations for any issues found
+```
 
 ### Common Issues
 
 #### 1. Both Interfaces Down
 ```bash
-# Check if interfaces exist
+# Use automated diagnostics first
+python3 tests/troubleshoot.py --component network
+
+# Manual checks
 ip link show eth0
 ip link show wlan0
 
@@ -612,6 +701,9 @@ sudo ip link set wlan0 up
 
 # Restart networking
 sudo systemctl restart dhcpcd
+
+# Verify with network test
+./tests/network_test.sh
 ```
 
 #### 2. WiFi Not Connecting
@@ -885,23 +977,50 @@ When network issues occur, follow this checklist:
 - [ ] Internet connectivity (`ping 8.8.8.8`)
 - [ ] Correct route selection (`ip route get 8.8.8.8`)
 
-## Support
+## Support and Diagnostics
 
-For additional help:
+### Automated Problem Resolution
+```bash
+# Start with comprehensive network diagnostics
+python3 tests/troubleshoot.py --network
 
-1. **Check Logs**: `journalctl -u dhcpcd -u wpa_supplicant@wlan0 -f`
-2. **Run Diagnostics**: `./scripts/network_status.sh`
-3. **Test Connectivity**: `./scripts/network_test.sh`
-4. **View Configuration**: `./scripts/wifi_config.sh` (option 6)
+# For ongoing issues, run continuous monitoring
+python3 tests/performance_analyzer.py --monitor --network --duration 300
+
+# Generate detailed network report
+python3 tests/system_health_check.py --network-report
+```
+
+### Manual Diagnostics
+1. **System Logs**: `journalctl -u dhcpcd -u wpa_supplicant@wlan0 -f`
+2. **Network Status**: `./scripts/network_status.sh`
+3. **Connectivity Tests**: `./tests/network_test.sh --full`
+4. **Configuration Review**: `./scripts/wifi_config.sh` (option 6)
+5. **Performance Analysis**: `python3 tests/performance_analyzer.py --network-benchmark`
+
+### Getting Help
+- **Run diagnostics first**: Always run `python3 tests/troubleshoot.py --network` and include output with support requests
+- **GitHub Issues**: https://github.com/Mike-Bollinger/BathyCat-Seabed-Imager/issues
+- **Documentation**: Check main README.md and troubleshooting guide
+- **Log Analysis**: Network logs are automatically included in date-stamped logs at `/media/usb/bathyimager/logs/YYYYMMDD/`
 
 ## Summary
 
-The BathyImager dual networking setup provides:
+The BathyCat dual networking setup provides:
 
-- ✅ **Redundant Connectivity**: Ethernet + WiFi for reliability
-- ✅ **Automatic Priority**: Ethernet preferred, WiFi as backup  
-- ✅ **Seamless Failover**: Maintains connectivity during transitions
-- ✅ **Easy Management**: Scripts for setup, monitoring, and testing
-- ✅ **Flexible Configuration**: Supports DHCP and static IP setups
+- ✅ **Redundant Connectivity**: Ethernet + WiFi for maximum reliability
+- ✅ **Intelligent Priority**: Ethernet preferred, WiFi as seamless backup  
+- ✅ **Automatic Failover**: Maintains connectivity during cable disconnections
+- ✅ **Comprehensive Testing**: Built-in diagnostic and performance tools
+- ✅ **Easy Management**: Automated scripts for setup, monitoring, and troubleshooting
+- ✅ **Flexible Configuration**: Supports DHCP, static IP, and enterprise WiFi setups
+- ✅ **Production Ready**: Tested for marine deployment environments
 
-This configuration ensures the BathyImager system maintains reliable network connectivity for GPS synchronization, data transfer, and remote management even in challenging marine environments.
+This configuration ensures the BathyCat system maintains reliable network connectivity for:
+- **GPS Time Synchronization**: Critical for accurate timestamping
+- **Remote Monitoring**: SSH access and system status checking  
+- **System Updates**: Automatic or manual software updates
+- **Data Transfer**: Backup and analysis of captured imagery
+- **Troubleshooting**: Remote diagnostics and support
+
+The network system is designed to handle challenging marine environments where connectivity may be intermittent, ensuring continuous operation of the seabed imaging system.

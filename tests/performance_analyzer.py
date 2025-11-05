@@ -1,9 +1,20 @@
 #!/usr/bin/env python3
 """
-BathyImager Performance Diagnostic
+BathyCat Performance Analysis Tool
 =================================
 
-Quick test to identify what's causing reduced capture rates.
+This script provides comprehensive performance analysis for the BathyCat
+Seabed Imager system to identify bottlenecks and optimization opportunities.
+
+Features:
+- Pipeline timing analysis
+- Component performance benchmarking
+- Memory and CPU usage monitoring
+- Storage performance testing
+- Configuration optimization recommendations
+- Real-time performance monitoring
+
+Usage: python3 performance_analyzer.py [--monitor] [--benchmark] [--report]
 """
 
 import sys

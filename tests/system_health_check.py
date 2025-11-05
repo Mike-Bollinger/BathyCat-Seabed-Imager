@@ -1,64 +1,107 @@
 #!/usr/bin/env python3
 """
-BathyCat Service Diagnostic and Fix Recommendations
-==================================================
+BathyCat System Health Check
+===========================
 
-This script analyzes the current service status and provides specific
-recommendations to fix the identified issues.
+This script provides comprehensive system health analysis and troubleshooting
+recommendations for the BathyCat Seabed Imager system.
+
+Features:
+- Service status monitoring
+- Hardware component testing  
+- Configuration validation
+- Performance analysis
+- Automated fix recommendations
+
+Usage: python3 system_health_check.py [--detailed] [--auto-fix]
 """
 
 import subprocess
 import os
+import sys
 import json
 import re
-from datetime import datetime
+import argparse
+from datetime import datetime, timedelta
+from pathlib import Path
+
+# Add src directory to path for BathyCat modules
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 def check_service_status():
-    """Check BathyCat service status."""
-    print("=== SERVICE STATUS ===")
+    """Check BathyCat service status with enhanced analysis."""
+    print("🔍 SERVICE STATUS")
+    print("=" * 50)
     
     try:
+        # Check service status
         result = subprocess.run(['systemctl', 'is-active', 'bathyimager'], 
                                capture_output=True, text=True)
         status = result.stdout.strip()
-        print(f"Service status: {status}")
+        print(f"📊 Service status: {status}")
         
         if status == "active":
-            # Get recent logs to analyze performance
-            result = subprocess.run(['journalctl', '-u', 'bathyimager', '--since', '5 minutes ago', '--no-pager'],
+            # Get detailed service info
+            result = subprocess.run(['systemctl', 'show', 'bathyimager', '--no-pager'],
+                                   capture_output=True, text=True)
+            service_info = result.stdout
+            
+            # Extract start time and memory usage
+            start_time_match = re.search(r'ExecMainStartTimestamp=(.+)', service_info)
+            memory_match = re.search(r'MemoryCurrent=(\d+)', service_info)
+            
+            if start_time_match:
+                print(f"🕐 Started: {start_time_match.group(1)}")
+            if memory_match:
+                memory_mb = int(memory_match.group(1)) / (1024 * 1024)
+                print(f"💾 Memory usage: {memory_mb:.1f} MB")
+            
+            # Get recent logs for analysis
+            result = subprocess.run(['journalctl', '-u', 'bathyimager', '--since', '10 minutes ago', '--no-pager'],
                                    capture_output=True, text=True)
             logs = result.stdout
             
-            # Analyze logs for issues
+            # Analyze logs for performance and issues
             issues = []
             
-            # Check frame rate
-            rate_matches = re.findall(r'Rate: ([\d.]+)/s', logs)
-            if rate_matches:
-                current_rate = float(rate_matches[-1])
-                print(f"Current capture rate: {current_rate:.2f} fps")
-                if current_rate < 3.5:  # Should be ~4fps
-                    issues.append(f"Low frame rate: {current_rate:.2f} fps (expected: 4.0 fps)")
+            # Check for timing optimization logs
+            timing_matches = re.findall(r'🚀 Pipeline timing: Total=([\d.]+)ms', logs)
+            if timing_matches:
+                avg_timing = sum(float(t) for t in timing_matches[-10:]) / min(len(timing_matches), 10)
+                print(f"⏱️  Average pipeline time: {avg_timing:.1f}ms")
+                if avg_timing > 100:  # More than 100ms is concerning
+                    issues.append(f"Slow pipeline performance: {avg_timing:.1f}ms")
             
-            # Check for GPS issues
-            if "Unhealthy components: gps" in logs:
-                issues.append("GPS unhealthy (expected indoors)")
+            # Check for image processing timing
+            process_matches = re.findall(r'Image processing timing: Total=([\d.]+)ms', logs)
+            if process_matches:
+                avg_process = sum(float(t) for t in process_matches[-10:]) / min(len(process_matches), 10)
+                print(f"🖼️  Average processing time: {avg_process:.1f}ms")
             
-            # Check for camera issues
-            if "Camera initialization failed" in logs or "Failed to capture" in logs:
-                issues.append("Camera access problems")
+            # Check capture rate
+            captures_in_logs = len(re.findall(r'Image captured:', logs))
+            if captures_in_logs > 0:
+                minutes_analyzed = 10
+                estimated_rate = captures_in_logs / minutes_analyzed * 60  # per hour
+                print(f"📸 Recent capture activity: ~{estimated_rate:.0f} images/hour")
             
-            # Check for overexposure
-            if "OVEREXPOSED" in logs:
-                issues.append("Camera overexposure detected")
-            
+            # Check for common issues
+            if "Failed to capture camera frame" in logs:
+                issues.append("Camera capture failures detected")
+            if "GPS not available" in logs:
+                issues.append("GPS connectivity issues")
+            if "Storage not available" in logs:
+                issues.append("USB storage problems")
+            if "Log rotated to new date" in logs:
+                print("📝 Log rotation working correctly")
+                
             return status, issues
         else:
-            return status, ["Service not running"]
+            return status, ["Service not running - use 'sudo systemctl start bathyimager'"]
             
     except Exception as e:
-        print(f"Failed to check service status: {e}")
-        return "unknown", ["Cannot check service status"]
+        print(f"❌ Failed to check service status: {e}")
+        return "unknown", ["Cannot check service status - ensure systemctl is available"]
 
 def check_camera_devices():
     """Check camera device availability."""

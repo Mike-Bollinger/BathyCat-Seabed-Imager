@@ -1,15 +1,38 @@
 #!/usr/bin/env python3
 """
-Simple Camera Test for BathyCat
-==============================
+BathyCat Camera Troubleshooting Tool
+===================================
 
-This script tests camera access with different backends and provides
-immediate feedback on camera issues.
+This script provides comprehensive camera testing and troubleshooting for
+the BathyCat Seabed Imager system.
+
+Features:
+- Multiple backend testing (V4L2, GStreamer, FFmpeg, Default)
+- Resolution and framerate validation
+- Exposure control testing
+- Image quality analysis
+- Performance benchmarking
+- Configuration recommendations
+
+Usage: python3 camera_troubleshoot.py [--detailed] [--benchmark]
 """
 
-import cv2
-import numpy as np
+import sys
+import os
 import time
+import argparse
+from datetime import datetime
+
+# Add src directory to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+try:
+    import cv2
+    import numpy as np
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+    print("⚠️  OpenCV not available - some tests will be skipped")
 
 def test_camera_backends():
     """Test camera with different OpenCV backends."""
