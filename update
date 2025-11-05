@@ -18,6 +18,7 @@ set -e  # Exit on any error
 # Parse command line arguments
 FORCE_MODE=false
 STASH_MODE=false
+SKIP_DEPS=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -29,14 +30,19 @@ while [[ $# -gt 0 ]]; do
             STASH_MODE=true
             shift
             ;;
+        --skip-deps)
+            SKIP_DEPS=true
+            shift
+            ;;
         --help|-h)
             echo "BathyImager Update Script"
             echo ""
             echo "Usage:"
-            echo "  ./update           - Interactive update"
-            echo "  ./update --force   - Force reset to remote (loses local changes)"
-            echo "  ./update --stash   - Auto-stash and pull"
-            echo "  ./update --help    - Show this help"
+            echo "  ./update              - Interactive update with smart dependency check"
+            echo "  ./update --force      - Force reset to remote (loses local changes)"
+            echo "  ./update --stash      - Auto-stash and pull"
+            echo "  ./update --skip-deps  - Skip dependency check (fastest, git only)"
+            echo "  ./update --help       - Show this help"
             echo ""
             exit 0
             ;;
@@ -168,12 +174,16 @@ else
 fi
 
 # Update dependencies
-echo "📦 Updating dependencies..."
-
-# Check if requirements.txt exists
-if [ ! -f "requirements.txt" ]; then
-    echo "⚠️  No requirements.txt found - skipping dependency update"
+# Check dependencies unless skipped
+if [ "$SKIP_DEPS" = true ]; then
+    echo "⏩ Skipping dependency check (--skip-deps)"
 else
+    echo "📦 Checking dependencies..."
+
+    # Check if requirements.txt exists
+    if [ ! -f "requirements.txt" ]; then
+        echo "⚠️  No requirements.txt found - skipping dependency update"
+    else
     if [ -d "venv" ]; then
         echo "   Using virtual environment..."
         
@@ -194,47 +204,92 @@ else
                 echo "   Installing dependencies (this may take a few minutes)..."
                 echo "   Note: Using pre-compiled wheels to avoid compilation issues..."
                 
-                # Install core packages individually to avoid version conflicts
-                echo "   Installing core packages individually (avoids version conflicts)..."
+                # Check and install only missing/outdated packages
+                echo "   Checking dependencies (only installing what's needed)..."
                 
-                # Core packages needed for BathyImager
-                CORE_PACKAGES=(
-                    "opencv-python"
-                    "pynmea2" 
-                    "Pillow"
-                    "piexif"
-                    "pyserial"
-                    "psutil"
-                    "schedule"
+                # Core packages needed for BathyImager with minimum versions
+                declare -A CORE_PACKAGES=(
+                    ["opencv-python"]="4.0.0"
+                    ["pynmea2"]="1.0.0" 
+                    ["Pillow"]="8.0.0"
+                    ["piexif"]="1.0.0"
+                    ["pyserial"]="3.0.0"
+                    ["psutil"]="5.0.0"
+                    ["schedule"]="1.0.0"
                 )
                 
-                # Install packages one by one with latest versions
-                INSTALL_SUCCESS=true
-                for package in "${CORE_PACKAGES[@]}"; do
-                    echo "     Installing $package..."
-                    if timeout 120 venv/bin/pip install --upgrade "$package" \
-                        --no-cache-dir \
-                        --prefer-binary \
-                        --extra-index-url https://www.piwheels.org/simple 2>/dev/null; then
-                        echo "     ✓ $package installed"
+                # Function to check if package needs installation/upgrade
+                check_package_version() {
+                    local package=$1
+                    local min_version=$2
+                    
+                    # Check if package is installed and get version
+                    local current_version=$(venv/bin/pip show "$package" 2>/dev/null | grep "Version:" | cut -d" " -f2)
+                    
+                    if [ -z "$current_version" ]; then
+                        return 1  # Package not installed
+                    fi
+                    
+                    # Simple version comparison (works for most cases)
+                    local required_major=$(echo "$min_version" | cut -d. -f1)
+                    local current_major=$(echo "$current_version" | cut -d. -f1)
+                    
+                    if [ "$current_major" -ge "$required_major" ]; then
+                        return 0  # Version is adequate
                     else
-                        echo "     ⚠ $package failed (continuing)"
-                        INSTALL_SUCCESS=false
+                        return 1  # Version too old
+                    fi
+                }
+                
+                # Check packages and install only if needed
+                INSTALL_SUCCESS=true
+                PACKAGES_INSTALLED=0
+                for package in "${!CORE_PACKAGES[@]}"; do
+                    min_version="${CORE_PACKAGES[$package]}"
+                    
+                    if check_package_version "$package" "$min_version"; then
+                        echo "     ✓ $package (already up-to-date)"
+                    else
+                        echo "     📦 Installing/updating $package..."
+                        if timeout 120 venv/bin/pip install --upgrade "$package" \
+                            --no-cache-dir \
+                            --prefer-binary \
+                            --extra-index-url https://www.piwheels.org/simple 2>/dev/null; then
+                            echo "     ✓ $package installed/updated"
+                            ((PACKAGES_INSTALLED++))
+                        else
+                            echo "     ⚠ $package failed (continuing)"
+                            INSTALL_SUCCESS=false
+                        fi
                     fi
                 done
                 
-                # Handle numpy separately (check system version first)
+                # Handle numpy separately (check venv and system versions)
                 echo "     Checking numpy..."
+                VENV_NUMPY=$(venv/bin/python -c "import numpy; print(numpy.__version__)" 2>/dev/null || echo "none")
                 SYSTEM_NUMPY=$(python3 -c "import numpy; print(numpy.__version__)" 2>/dev/null || echo "none")
-                if [[ "$SYSTEM_NUMPY" =~ ^2\. ]]; then
-                    echo "     ✓ Using system numpy $SYSTEM_NUMPY (compatible)"
+                
+                NUMPY_NEEDED=false
+                if [[ "$VENV_NUMPY" == "none" ]]; then
+                    if [[ "$SYSTEM_NUMPY" =~ ^[12]\. ]]; then
+                        echo "     ✓ Using system numpy $SYSTEM_NUMPY (adequate)"
+                    else
+                        NUMPY_NEEDED=true
+                    fi
+                elif [[ "$VENV_NUMPY" =~ ^[12]\. ]]; then
+                    echo "     ✓ Using venv numpy $VENV_NUMPY (adequate)"
                 else
-                    echo "     Installing numpy..."
+                    NUMPY_NEEDED=true
+                fi
+                
+                if [ "$NUMPY_NEEDED" = true ]; then
+                    echo "     📦 Installing/updating numpy..."
                     if timeout 120 venv/bin/pip install --upgrade "numpy>=1.19.0" \
                         --no-cache-dir \
                         --prefer-binary \
                         --extra-index-url https://www.piwheels.org/simple 2>/dev/null; then
-                        echo "     ✓ numpy installed"
+                        echo "     ✓ numpy installed/updated"
+                        ((PACKAGES_INSTALLED++))
                     else
                         echo "     ⚠ numpy failed (may use system version)"
                         INSTALL_SUCCESS=false
@@ -243,14 +298,28 @@ else
                 
                 # GPIO support for Raspberry Pi
                 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-                    echo "     Installing GPIO support..."
-                    timeout 60 venv/bin/pip install --upgrade RPi.GPIO \
-                        --no-cache-dir --prefer-binary 2>/dev/null || \
-                    echo "     ⚠ GPIO support failed (not critical)"
+                    echo "     Checking GPIO support..."
+                    GPIO_VERSION=$(venv/bin/pip show RPi.GPIO 2>/dev/null | grep "Version:" | cut -d" " -f2)
+                    if [ -n "$GPIO_VERSION" ]; then
+                        echo "     ✓ RPi.GPIO $GPIO_VERSION (already installed)"
+                    else
+                        echo "     📦 Installing GPIO support..."
+                        if timeout 60 venv/bin/pip install RPi.GPIO \
+                            --no-cache-dir --prefer-binary 2>/dev/null; then
+                            echo "     ✓ RPi.GPIO installed"
+                            ((PACKAGES_INSTALLED++))
+                        else
+                            echo "     ⚠ GPIO support failed (not critical)"
+                        fi
+                    fi
                 fi
                 
                 if [ "$INSTALL_SUCCESS" = true ]; then
-                    echo "   ✅ Dependencies updated successfully (individual packages)"
+                    if [ "$PACKAGES_INSTALLED" -eq 0 ]; then
+                        echo "   ✅ All dependencies already up-to-date (no installation needed)"
+                    else
+                        echo "   ✅ Dependencies updated successfully ($PACKAGES_INSTALLED packages installed/updated)"
+                    fi
                 else
                     echo "   ⚠️  Some packages failed but core functionality should work"
                 fi
@@ -263,55 +332,85 @@ else
         fi
     else
         echo "   No virtual environment found - using system pip..."
-        echo "   Installing dependencies (this may take a few minutes)..."
+        echo "   Checking system dependencies (only installing what's needed)..."
         
-        # Upgrade pip first
-        pip3 install --upgrade pip setuptools wheel --user --no-cache-dir >/dev/null 2>&1 || echo "   Warning: Could not upgrade pip"
+        # Function to check if system package is installed
+        check_system_package() {
+            python3 -c "import $1" 2>/dev/null && return 0 || return 1
+        }
         
-        # Install core packages individually for system Python
-        echo "   Installing core packages individually..."
+        # Check pip tools first
+        echo "     Checking pip tools..."
+        PIP_VERSION=$(pip3 --version 2>/dev/null | grep -o "[0-9]\+\.[0-9]\+" | head -1)
+        if [[ "$PIP_VERSION" =~ ^[0-9]+\.[0-9]+$ ]] && [ "${PIP_VERSION%%.*}" -ge 20 ]; then
+            echo "     ✓ pip $PIP_VERSION (adequate)"
+        else
+            echo "     📦 Upgrading pip tools..."
+            pip3 install --upgrade pip setuptools wheel --user --no-cache-dir >/dev/null 2>&1 || echo "   Warning: Could not upgrade pip"
+        fi
         
-        CORE_PACKAGES=(
-            "opencv-python"
-            "pynmea2" 
-            "Pillow"
-            "piexif"
-            "pyserial"
-            "psutil"
-            "schedule"
+        # Core packages for system Python
+        declare -A SYSTEM_PACKAGES=(
+            ["cv2"]="opencv-python"
+            ["pynmea2"]="pynmea2"
+            ["PIL"]="Pillow"
+            ["piexif"]="piexif"
+            ["serial"]="pyserial"
+            ["psutil"]="psutil"
+            ["schedule"]="schedule"
         )
         
         INSTALL_SUCCESS=true
-        for package in "${CORE_PACKAGES[@]}"; do
-            echo "     Installing $package..."
-            if timeout 120 pip3 install --upgrade "$package" --user \
-                --no-cache-dir \
-                --prefer-binary \
-                --extra-index-url https://www.piwheels.org/simple 2>/dev/null; then
-                echo "     ✓ $package installed"
+        PACKAGES_INSTALLED=0
+        for import_name in "${!SYSTEM_PACKAGES[@]}"; do
+            package_name="${SYSTEM_PACKAGES[$import_name]}"
+            
+            if check_system_package "$import_name"; then
+                echo "     ✓ $package_name (already available)"
             else
-                echo "     ⚠ $package failed (continuing)"
-                INSTALL_SUCCESS=false
+                echo "     📦 Installing $package_name..."
+                if timeout 120 pip3 install "$package_name" --user \
+                    --no-cache-dir \
+                    --prefer-binary \
+                    --extra-index-url https://www.piwheels.org/simple 2>/dev/null; then
+                    echo "     ✓ $package_name installed"
+                    ((PACKAGES_INSTALLED++))
+                else
+                    echo "     ⚠ $package_name failed (continuing)"
+                    INSTALL_SUCCESS=false
+                fi
             fi
         done
         
         # Handle numpy for system Python
-        echo "     Installing numpy..."
-        if timeout 120 pip3 install --upgrade "numpy>=1.19.0" --user \
-            --no-cache-dir \
-            --prefer-binary \
-            --extra-index-url https://www.piwheels.org/simple 2>/dev/null; then
-            echo "     ✓ numpy installed"
+        echo "     Checking numpy..."
+        if check_system_package "numpy"; then
+            NUMPY_VERSION=$(python3 -c "import numpy; print(numpy.__version__)" 2>/dev/null)
+            echo "     ✓ numpy $NUMPY_VERSION (already available)"
         else
-            echo "     ⚠ numpy failed (may use system version)"
-            INSTALL_SUCCESS=false
+            echo "     📦 Installing numpy..."
+            if timeout 120 pip3 install "numpy>=1.19.0" --user \
+                --no-cache-dir \
+                --prefer-binary \
+                --extra-index-url https://www.piwheels.org/simple 2>/dev/null; then
+                echo "     ✓ numpy installed"
+                ((PACKAGES_INSTALLED++))
+            else
+                echo "     ⚠ numpy failed"
+                INSTALL_SUCCESS=false
+            fi
         fi
         
         if [ "$INSTALL_SUCCESS" = true ]; then
-            echo "   ✅ Dependencies updated successfully (individual packages)"
+            if [ "$PACKAGES_INSTALLED" -eq 0 ]; then
+                echo "   ✅ All dependencies already available (no installation needed)"
+            else
+                echo "   ✅ Dependencies updated successfully ($PACKAGES_INSTALLED packages installed)"
+            fi
         else
             echo "   ⚠️  Some packages failed but core functionality should work"
         fi
+    fi
     fi
 fi
 
