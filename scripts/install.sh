@@ -27,7 +27,7 @@ NC='\033[0m' # No Color
 INSTALL_USER="bathyimager"
 PROJECT_DIR="/home/$INSTALL_USER/BathyCat-Seabed-Imager"
 CONFIG_DIR="$PROJECT_DIR/config"
-LOG_DIR="/var/log/bathyimager"
+LOG_DIR="/media/usb/bathyimager/logs"
 SERVICE_NAME="bathyimager"
 PYTHON_ENV="$PROJECT_DIR/venv"
 
@@ -502,7 +502,7 @@ create_default_config() {
   
   "log_level": "INFO",
   "log_to_file": true,
-  "log_file_path": "/var/log/bathyimager/bathyimager.log",
+  "log_file_path": "/media/usb/bathyimager/logs/bathyimager.log",
   "log_max_size_mb": 100,
   "log_backup_count": 5,
   

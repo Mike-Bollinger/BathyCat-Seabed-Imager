@@ -135,9 +135,8 @@ echo "🚀 BathyImager Development Setup"
 
 echo "📁 Creating necessary directories..."
 
-mkdir -p /var/log/bathyimager# Check if we're in the project directory
-
-chown bathyimager:bathyimager /var/log/bathyimager 2>/dev/null || echo "   Note: bathyimager user not found"if [ ! -f "src/bathycat_imager.py" ]; then
+# Check if we're in the project directory
+if [ ! -f "src/main.py" ]; then
 
 mkdir -p /media/usb    print_error "Please run this script from the BathyCat-Seabed-Imager directory"
 
@@ -223,7 +222,8 @@ echo "   • Check device detection: ls -la /dev/video* /dev/ttyUSB*"    pytest-
 
 echo "   • Verify permissions: ./scripts/hardware_diagnostics.sh permissions"    black \
 
-echo "   • View logs: tail -f /var/log/bathyimager/bathyimager.log"    flake8 \
+echo "   • View logs: tail -f /media/usb/bathyimager/logs/\$(date +%Y%m%d)/bathyimager.log"
+    flake8 \
     mypy
 
 print_success "Dependencies installed"

@@ -95,7 +95,7 @@ class LoggingConfig:
     """Logging configuration settings."""
     level: str = "INFO"
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    file_path: str = "/var/log/bathycat/bathycat.log"
+    file_path: str = "/media/usb/bathyimager/logs/bathyimager.log"
     max_size_mb: int = 10
     backup_count: int = 5
     console_output: bool = True
