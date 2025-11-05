@@ -103,7 +103,7 @@ class GPS:
         
         # Time synchronization state
         self.last_time_sync = 0
-        self.time_sync_interval = 1800  # Sync every 30 minutes after first sync
+        self.time_sync_interval = 300  # Sync every 5 minutes for better accuracy (was 30 min)
         self.first_fix_received = False
         self.system_time_synced = False
         
@@ -373,6 +373,9 @@ class GPS:
                             self.system_time_synced = True
                             self.first_fix_received = True
                             self.last_time_sync = current_time
+                            
+                            # Notify main service to resync monotonic time after GPS correction
+                            self.logger.debug("🔄 GPS sync completed - monotonic time should be resynced")
                         else:
                             # Simplified error handling (avoid performance impact of excessive logging)
                             error_msg = result.stderr.strip() if result.stderr else result.stdout.strip()

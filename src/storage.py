@@ -241,18 +241,19 @@ class StorageManager:
         dir_path = os.path.join(self.images_path, date_dir)
         os.makedirs(dir_path, exist_ok=True)
         
-        # Generate base filename with timestamp
-        base_timestamp = timestamp.strftime('%Y%m%d_%H%M%S')
+        # Generate base filename with new dash-separated format
+        # Format: prefix_YYYYMMDD-HHMMSS-mmm_NNNNN.jpg
+        date_part = timestamp.strftime('%Y%m%d')
+        time_part = timestamp.strftime('%H%M%S')
+        milliseconds = int(timestamp.microsecond / 1000)  # Convert microseconds to milliseconds
         
         if self.use_sequence_counter and sequence_counter is not None:
-            # Counter format: More reliable for high-frequency capture
-            # Format: bathyimager_20251105_143750_001.jpg
-            filename = f"{self.filename_prefix}_{base_timestamp}_{sequence_counter:03d}.jpg"
+            # Counter format with dashes: bathyimgtest_20251105-174300-082_00123.jpg
+            filename = f"{self.filename_prefix}_{date_part}-{time_part}-{milliseconds:03d}_{sequence_counter:05d}.jpg"
         else:
-            # Timestamp format: Traditional millisecond precision
-            # Format: bathyimager_20251105_143750_547.jpg (547 = milliseconds)
-            milliseconds = int(timestamp.microsecond / 1000)  # Convert microseconds to milliseconds
-            filename = f"{self.filename_prefix}_{base_timestamp}_{milliseconds:03d}.jpg"
+            # Timestamp format with dashes: bathyimgtest_20251105-174300-082_001.jpg (default counter)
+            default_counter = 1  # Default counter when not using sequence
+            filename = f"{self.filename_prefix}_{date_part}-{time_part}-{milliseconds:03d}_{default_counter:05d}.jpg"
         
         return os.path.join(dir_path, filename)
     

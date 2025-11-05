@@ -102,6 +102,11 @@ class BathyCatService:
         self.image_sequence_counter = 0
         self.current_date = datetime.now().date()
         
+        # High-precision timing system
+        self._boot_time_offset = None
+        self._last_monotonic_sync = 0
+        self._sync_monotonic_time()
+        
         # Threading
         self.main_thread: Optional[threading.Thread] = None
         self.status_thread: Optional[threading.Thread] = None
@@ -485,6 +490,13 @@ class BathyCatService:
             if self.gps:
                 gps_fix = self.gps.get_current_fix()
                 
+                # Resync monotonic time if GPS has recently synced system time
+                if (self.gps.system_time_synced and 
+                    hasattr(self.gps, 'last_time_sync') and
+                    time.time() - self.gps.last_time_sync < 60):  # Within last minute
+                    if time.time() - self._last_monotonic_sync > 60:  # Haven't synced in last minute
+                        self._sync_monotonic_time()
+                
                 # Check if we require valid GPS fix (skip excessive debug logging for performance)
                 if self.require_gps_fix and (not gps_fix or not gps_fix.is_valid):
                     return False
@@ -558,21 +570,61 @@ class BathyCatService:
         
         return timestamp
         
+    def _sync_monotonic_time(self) -> None:
+        """
+        Synchronize monotonic time with system time for high-precision timestamping.
+        
+        This establishes the relationship between time.monotonic_ns() (which never jumps
+        but has arbitrary start point) and actual UTC time. Should be called periodically
+        to account for any GPS time corrections.
+        """
+        try:
+            # Get current times as close together as possible
+            monotonic_ns = time.monotonic_ns()
+            utc_time = datetime.now(timezone.utc)
+            
+            # Calculate offset from monotonic time to UTC epoch
+            utc_ns = int(utc_time.timestamp() * 1_000_000_000)
+            self._boot_time_offset = utc_ns - monotonic_ns
+            self._last_monotonic_sync = time.time()
+            
+            self.logger.debug(f"⏱️ Monotonic time synchronized: offset = {self._boot_time_offset/1e9:.6f}s")
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to sync monotonic time: {e}")
+    
     def _get_precise_capture_timestamp(self) -> datetime:
         """
-        Get precise timestamp immediately BEFORE camera capture initiation.
+        Get microsecond-precise timestamp using monotonic clock.
         
-        This approach captures the timestamp at the moment we request the camera frame,
-        which is much closer to the actual capture time than waiting until after
-        the frame is retrieved and processed.
+        Uses time.monotonic_ns() which provides microsecond precision and is not
+        affected by system time adjustments, then converts to UTC using our
+        established offset.
         
         Returns:
-            datetime: UTC timestamp representing the moment of capture initiation
+            datetime: UTC timestamp with microsecond precision
         """
-        # PERFORMANCE: Capture timestamp immediately before camera.capture_frame()
-        # This minimizes the delay between timestamp recording and actual image capture
-        # Critical for high-speed vehicle deployment accuracy (2+ m/s)
-        return datetime.now(timezone.utc)
+        try:
+            # Resync monotonic time periodically (every 5 minutes) to account for GPS corrections
+            if time.time() - self._last_monotonic_sync > 300:  # 5 minutes
+                self._sync_monotonic_time()
+            
+            # Get high-precision monotonic timestamp
+            monotonic_ns = time.monotonic_ns()
+            
+            # Convert to UTC using our established offset
+            if self._boot_time_offset is not None:
+                utc_ns = monotonic_ns + self._boot_time_offset
+                utc_seconds = utc_ns / 1_000_000_000
+                return datetime.fromtimestamp(utc_seconds, tz=timezone.utc)
+            else:
+                # Fallback to system time if sync failed
+                self.logger.warning("Boot time offset not available, using system time")
+                return datetime.now(timezone.utc)
+                
+        except Exception as e:
+            self.logger.warning(f"Precision timestamp failed, using system time: {e}")
+            return datetime.now(timezone.utc)
     
 
     
