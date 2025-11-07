@@ -98,6 +98,18 @@ class GPS:
         # GPS state
         self.current_fix: Optional[GPSFix] = None
         self.last_fix_time = 0
+        
+        # PPS integration (for future hardware upgrade)
+        self.pps_enabled = config.get('pps_enabled', False)
+        self.pps_interface = None
+        if self.pps_enabled:
+            try:
+                from pps_interface import GPSPPSInterface
+                self.pps_interface = GPSPPSInterface(config)
+                self.logger.info("PPS interface loaded for nanosecond timing")
+            except ImportError:
+                self.logger.warning("PPS interface not available - using software timing")
+                self.pps_enabled = False
         self.fix_count = 0
         self.sentence_count = 0
         
@@ -136,6 +148,15 @@ class GPS:
             
             self.is_connected = True
             self.logger.info("GPS connection established")
+            
+            # Initialize PPS interface if enabled
+            if self.pps_enabled and self.pps_interface:
+                pps_ready = self.pps_interface.initialize()
+                if pps_ready:
+                    self.logger.info("GPS PPS interface initialized for nanosecond timing")
+                else:
+                    self.logger.warning("PPS interface initialization failed - using software timing")
+            
             return True
             
         except Exception as e:
@@ -469,6 +490,17 @@ class GPS:
         }
         
         return info
+    
+    def get_hardware_timestamp(self) -> Optional[int]:
+        """
+        Get hardware PPS timestamp if available.
+        
+        Returns:
+            int: Nanosecond timestamp from PPS hardware, or None if not available
+        """
+        if self.pps_enabled and self.pps_interface:
+            return self.pps_interface.get_hardware_timestamp()
+        return None
     
     def is_healthy(self) -> bool:
         """

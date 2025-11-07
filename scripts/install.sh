@@ -215,10 +215,14 @@ install_system_dependencies() {
         setserial \
         usbutils
     
-    # Time synchronization and GPS support
+    # Time synchronization and GPS HAT support  
     apt-get install -y \
         systemd-timesyncd \
-        tzdata
+        tzdata \
+        pps-tools \
+        gpsd \
+        gpsd-clients \
+        chrony
     
     # System utilities
     apt-get install -y \
@@ -478,10 +482,14 @@ create_default_config() {
   "camera_exposure": -6,
   "camera_white_balance": 4000,
   
-  "gps_port": "/dev/ttyUSB0",
+  "gps_port": "/dev/ttyAMA0",
   "gps_baudrate": 9600,
   "gps_timeout": 1.0,
   "gps_time_sync": true,
+  
+  "pps_enabled": true,
+  "pps_gpio_pin": 4,
+  "pps_device": "/dev/pps0",
   
   "image_format": "JPEG",
   "jpeg_quality": 85,
@@ -589,6 +597,95 @@ EOF
     fi
     
     print_success "Device permissions configured"
+}
+
+# Function to configure GPS HAT hardware
+configure_gps_hat() {
+    print_status "Configuring Adafruit Ultimate GPS HAT..."
+    
+    # Check if /boot/firmware/config.txt exists (newer Pi OS) or /boot/config.txt (older)
+    if [ -f "/boot/firmware/config.txt" ]; then
+        CONFIG_FILE="/boot/firmware/config.txt"
+    elif [ -f "/boot/config.txt" ]; then
+        CONFIG_FILE="/boot/config.txt"
+    else
+        print_warning "Boot config file not found - GPS HAT configuration may fail"
+        return 1
+    fi
+    
+    print_status "Using boot config: $CONFIG_FILE"
+    
+    # Backup original config
+    cp "$CONFIG_FILE" "$CONFIG_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+    
+    # Enable UART for GPS communication
+    if ! grep -q "enable_uart=1" "$CONFIG_FILE"; then
+        echo "enable_uart=1" >> "$CONFIG_FILE"
+        print_success "UART enabled for GPS HAT communication"
+    else
+        print_success "UART already enabled"
+    fi
+    
+    # Enable PPS GPIO overlay for GPIO 4 (GPS HAT standard)
+    if ! grep -q "dtoverlay=pps-gpio,gpiopin=4" "$CONFIG_FILE"; then
+        echo "dtoverlay=pps-gpio,gpiopin=4" >> "$CONFIG_FILE"
+        print_success "PPS GPIO overlay enabled on GPIO 4"
+    else
+        print_success "PPS GPIO overlay already enabled"
+    fi
+    
+    # Configure PPS module loading at boot
+    if ! grep -q "pps-gpio" /etc/modules; then
+        echo "pps-gpio" >> /etc/modules
+        print_success "PPS-GPIO module configured for boot loading"
+    else
+        print_success "PPS-GPIO module already configured"
+    fi
+    
+    # Set up GPIO UART permissions for GPS HAT
+    if [ -f "/dev/ttyAMA0" ]; then
+        chmod 666 /dev/ttyAMA0 2>/dev/null || true
+        chgrp dialout /dev/ttyAMA0 2>/dev/null || true
+        print_success "GPS HAT UART permissions configured"
+    else
+        print_warning "GPS HAT UART /dev/ttyAMA0 not found - may appear after reboot"
+    fi
+    
+    # Configure Chrony for GPS HAT time synchronization
+    if [ -f "/etc/chrony/chrony.conf" ]; then
+        # Backup original chrony config
+        cp /etc/chrony/chrony.conf /etc/chrony/chrony.conf.backup.$(date +%Y%m%d_%H%M%S)
+        
+        # Add GPS HAT time sources to Chrony configuration
+        if ! grep -q "refclock SHM 0" /etc/chrony/chrony.conf; then
+            cat >> /etc/chrony/chrony.conf << 'EOF'
+
+# GPS HAT Time Sources for BathyCat
+# NMEA time reference from GPS UART
+refclock SHM 0 offset 0.5 delay 0.2 refid NMEA
+
+# PPS time reference from GPIO 4 
+refclock PPS /dev/pps0 trust lock NMEA refid PPS
+
+# Allow NTP server access (for network time distribution)
+allow 192.168.0.0/16
+allow 10.0.0.0/8
+allow 172.16.0.0/12
+EOF
+            print_success "Chrony configured for GPS HAT time sources"
+        else
+            print_success "Chrony GPS HAT configuration already present"
+        fi
+        
+        # Enable and start chrony service
+        systemctl enable chrony
+        print_success "Chrony NTP service enabled"
+    else
+        print_warning "Chrony configuration file not found"
+    fi
+    
+    print_success "GPS HAT hardware configuration complete"
+    print_warning "REBOOT REQUIRED for GPS HAT changes to take effect"
 }
 
 # Function to configure log rotation
@@ -823,6 +920,7 @@ main() {
     install_bathyimager
     install_configuration
     setup_device_permissions
+    configure_gps_hat
     create_systemd_service
     setup_log_rotation
     setup_usb_automount

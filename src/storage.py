@@ -251,11 +251,48 @@ class StorageManager:
             # Counter format with dashes: bathyimgtest_20251105-174300-082_00123.jpg
             filename = f"{self.filename_prefix}_{date_part}-{time_part}-{milliseconds:03d}_{sequence_counter:05d}.jpg"
         else:
-            # Timestamp format with dashes: bathyimgtest_20251105-174300-082_001.jpg (default counter)
-            default_counter = 1  # Default counter when not using sequence
-            filename = f"{self.filename_prefix}_{date_part}-{time_part}-{milliseconds:03d}_{default_counter:05d}.jpg"
+            # Generate auto-incrementing counter based on existing files in directory
+            counter = self._get_next_file_counter(dir_path, date_part, time_part, milliseconds)
+            filename = f"{self.filename_prefix}_{date_part}-{time_part}-{milliseconds:03d}_{counter:05d}.jpg"
         
         return os.path.join(dir_path, filename)
+    
+    def _get_next_file_counter(self, dir_path: str, date_part: str, time_part: str, milliseconds: int) -> int:
+        """
+        Get next available counter for files with same timestamp prefix.
+        
+        Args:
+            dir_path: Directory path
+            date_part: Date part (YYYYMMDD)
+            time_part: Time part (HHMMSS)  
+            milliseconds: Millisecond part
+            
+        Returns:
+            int: Next available counter
+        """
+        try:
+            if not os.path.exists(dir_path):
+                return 1
+                
+            # Pattern: prefix_YYYYMMDD-HHMMSS-mmm_NNNNN.jpg
+            pattern = f"{self.filename_prefix}_{date_part}-{time_part}-{milliseconds:03d}_"
+            
+            max_counter = 0
+            for filename in os.listdir(dir_path):
+                if filename.startswith(pattern) and filename.endswith('.jpg'):
+                    try:
+                        # Extract counter: bathyimgtest_20251105-174300-082_00123.jpg
+                        counter_part = filename[len(pattern):-4]  # Remove .jpg
+                        counter = int(counter_part)
+                        max_counter = max(max_counter, counter)
+                    except (ValueError, IndexError):
+                        continue
+                        
+            return max_counter + 1
+            
+        except Exception as e:
+            self.logger.debug(f"Error getting next counter: {e}")
+            return 1
     
     def save_image(self, image_data: bytes, timestamp: Optional[datetime] = None, sequence_counter: Optional[int] = None) -> Optional[str]:
         """

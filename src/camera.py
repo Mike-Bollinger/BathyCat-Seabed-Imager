@@ -408,23 +408,117 @@ class Camera:
         if not self.is_initialized or not self.cap:
             self.logger.error("Camera not initialized")
             return None
-        
+
         try:
             ret, frame = self.cap.read()
             
             if not ret or frame is None:
                 self.logger.error("Failed to capture frame")
                 return None
-            
+
             # Update statistics
             self.frame_count += 1
             self.last_frame_time = time.time()
-            
+
             self.logger.debug(f"Captured frame {self.frame_count}, size: {frame.shape}")
             return frame
             
         except Exception as e:
             self.logger.error(f"Error capturing frame: {e}")
+            return None
+    
+    def capture_frame_with_timestamp(self) -> Optional[Tuple[np.ndarray, float]]:
+        """
+        Capture a single frame with hardware timestamp when available.
+        
+        This method attempts to get the most accurate timestamp possible by:
+        1. Using libcamera metadata timestamp if available (hardware-level timing)
+        2. Falling back to high-precision monotonic time at capture moment
+        
+        Returns:
+            tuple: (frame, timestamp_ns) where timestamp_ns is nanoseconds since epoch,
+                   or None if capture failed
+        """
+        if not self.is_initialized or not self.cap:
+            self.logger.error("Camera not initialized")
+            return None
+
+        try:
+            # Get high-precision timestamp as close to capture as possible
+            capture_time_ns = time.monotonic_ns()
+            
+            ret, frame = self.cap.read()
+            
+            if not ret or frame is None:
+                self.logger.error("Failed to capture frame")
+                return None
+
+            # Try to get hardware timestamp from libcamera metadata if available
+            # This would be more accurate than software timing
+            hardware_timestamp_ns = self._try_get_hardware_timestamp()
+            
+            # Use hardware timestamp if available, otherwise use software timing
+            if hardware_timestamp_ns is not None:
+                final_timestamp_ns = hardware_timestamp_ns
+                self.logger.debug("Using hardware timestamp from libcamera metadata")
+            else:
+                final_timestamp_ns = capture_time_ns
+                self.logger.debug("Using software timestamp (hardware not available)")
+
+            # Update statistics
+            self.frame_count += 1
+            self.last_frame_time = time.time()
+
+            self.logger.debug(f"Captured frame {self.frame_count} with timestamp {final_timestamp_ns}")
+            return (frame, final_timestamp_ns)
+            
+        except Exception as e:
+            self.logger.error(f"Error capturing frame with timestamp: {e}")
+            return None
+    
+    def _try_get_hardware_timestamp(self) -> Optional[int]:
+        """
+        Attempt to get hardware-level timestamp from camera metadata.
+        
+        This is currently a placeholder for future libcamera integration.
+        The research shows libcamera can provide frame metadata with hardware timestamps
+        that are much more accurate than software timing.
+        
+        Returns:
+            int: Hardware timestamp in nanoseconds since epoch, or None if not available
+        """
+        # TODO: Implement libcamera metadata extraction
+        # Based on research, libcamera provides frame metadata that includes:
+        # - SensorTimestamp: Hardware timestamp from sensor
+        # - FrameSequence: Frame sequence number
+        # - ExposureTime: Actual exposure duration
+        # 
+        # This would require either:
+        # 1. Using picamera2 library with libcamera backend
+        # 2. Direct libcamera integration via Python bindings
+        # 3. Camera-specific V4L2 metadata if supported
+        #
+        # For now, return None to fall back to software timing
+        # This maintains current functionality while preparing for hardware timing
+        
+        try:
+            # Check if we're using a backend that might support metadata
+            if self.cap and hasattr(self.cap, 'getBackendName'):
+                backend = self.cap.getBackendName()
+                if backend == "V4L2":
+                    # V4L2 might support frame metadata
+                    # Future implementation would query V4L2 for frame timestamp
+                    pass
+                elif backend == "GSTREAMER":
+                    # GStreamer might have pipeline timestamps
+                    # Future implementation would extract GStreamer timestamp
+                    pass
+            
+            # Return None for now - software timing fallback
+            return None
+            
+        except Exception as e:
+            self.logger.debug(f"Hardware timestamp query failed: {e}")
             return None
     
     def get_camera_info(self) -> Dict[str, Any]:

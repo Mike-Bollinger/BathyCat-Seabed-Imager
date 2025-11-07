@@ -15,10 +15,14 @@
   "camera_exposure": -6,
   "camera_white_balance": 4000,
   
-  "gps_port": "/dev/ttyUSB0",
+  "gps_port": "/dev/ttyAMA0",
   "gps_baudrate": 9600,
   "gps_timeout": 1.0,
   "gps_time_sync": true,
+  
+  "pps_enabled": true,
+  "pps_gpio_pin": 4,
+  "pps_device": "/dev/pps0",
   
   "image_format": "JPEG",
   "jpeg_quality": 85,
@@ -28,6 +32,7 @@
   
   "storage_base_path": "/media/usb/bathyimager",
   "filename_prefix": "bathyimgtest",
+  "use_sequence_counter": true,
   "min_free_space_gb": 5.0,
   "auto_cleanup_enabled": true,
   "cleanup_threshold_gb": 10.0,
