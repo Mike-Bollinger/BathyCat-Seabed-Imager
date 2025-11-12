@@ -9,6 +9,11 @@ LED Assignments (as documented in GPS HAT wiring):
 - Camera LED: GPIO 24 (Physical Pin 18) - Yellow
 - Error LED: GPIO 25 (Physical Pin 22) - Red
 
+Test Modes:
+1) Pattern Tests - Automated sequence of LED patterns
+2) Manual Control - Interactive LED control until user exits
+3) Both - Run patterns first, then manual control
+
 Usage: sudo python3 test_led_patterns.py
 """
 
@@ -163,34 +168,144 @@ def cleanup():
     GPIO.cleanup()
     print("All LEDs turned off, GPIO cleaned up.")
 
+def manual_led_control():
+    """Manual LED control - turn on LEDs until user signals to turn off."""
+    print(f"\n🔧 Manual LED Control Mode")
+    print("=" * 40)
+    print("Available commands:")
+    print("  'all' - Turn all LEDs on")
+    print("  'off' - Turn all LEDs off") 
+    print("  'power', 'gps', 'camera', 'error' - Toggle individual LED")
+    print("  'status' - Show current LED states")
+    print("  'quit' or 'exit' - Exit manual mode")
+    print("=" * 40)
+    
+    led_states = {name: False for name in LED_PINS.keys()}
+    
+    while True:
+        try:
+            command = input("\nLED Command (type 'help' for options): ").strip().lower()
+            
+            if command in ['quit', 'exit', 'q']:
+                print("Exiting manual LED control...")
+                break
+                
+            elif command == 'help':
+                print("\nCommands: all, off, power, gps, camera, error, status, quit")
+                
+            elif command == 'all':
+                print("🔆 Turning ALL LEDs ON")
+                for name, pin in LED_PINS.items():
+                    GPIO.output(pin, GPIO.HIGH)
+                    led_states[name] = True
+                    print(f"  ✓ {name.upper()} LED ON")
+                    
+            elif command == 'off':
+                print("⚫ Turning ALL LEDs OFF")
+                for name, pin in LED_PINS.items():
+                    GPIO.output(pin, GPIO.LOW)
+                    led_states[name] = False
+                    print(f"  ○ {name.upper()} LED OFF")
+                    
+            elif command in LED_PINS:
+                pin = LED_PINS[command]
+                current_state = led_states[command]
+                new_state = not current_state
+                
+                GPIO.output(pin, GPIO.HIGH if new_state else GPIO.LOW)
+                led_states[command] = new_state
+                status = "ON" if new_state else "OFF"
+                symbol = "✓" if new_state else "○"
+                print(f"  {symbol} {command.upper()} LED (GPIO {pin}) - {status}")
+                
+            elif command == 'status':
+                print("\n📊 Current LED States:")
+                for name, pin in LED_PINS.items():
+                    state = led_states[name]
+                    symbol = "🟢" if state else "⚫"
+                    status = "ON" if state else "OFF"
+                    print(f"  {symbol} {name.upper()} LED (GPIO {pin}): {status}")
+                    
+            else:
+                print(f"❌ Unknown command: '{command}'. Type 'help' for options.")
+                
+        except KeyboardInterrupt:
+            print("\n\n⚠️ Manual control interrupted")
+            break
+        except Exception as e:
+            print(f"❌ Error: {e}")
+    
+    # Turn off all LEDs before exiting
+    print("\nTurning off all LEDs before exit...")
+    for pin in LED_PINS.values():
+        GPIO.output(pin, GPIO.LOW)
+
+def run_pattern_tests():
+    """Run the full pattern test sequence."""
+    print("\n🎭 Running Pattern Test Sequence...")
+    print("=" * 40)
+    
+    # Test sequence
+    all_leds_on(5)
+    individual_led_test()
+    blink_pattern_all(5)
+    chase_pattern(3)
+    rapid_blink_test()
+    status_simulation()
+    
+    print("\n" + "=" * 50) 
+    print("✅ LED Pattern Test Complete!")
+    print("If all LEDs responded correctly, your wiring is good.")
+    print("=" * 50)
+
 def main():
-    """Main test sequence."""
-    print("=" * 50)
+    """Main test sequence with user options."""
+    print("=" * 60)
     print("BathyCat Imager LED Pattern Test")
-    print("=" * 50)
+    print("=" * 60)
     print("Testing LED connections for GPS HAT setup:")
     for name, pin in LED_PINS.items():
         print(f"  {name.upper()} LED: GPIO {pin}")
-    print("=" * 50)
+    print("=" * 60)
+    
+    print("\nSelect test mode:")
+    print("1) Pattern Tests - Automated LED pattern sequence")
+    print("2) Manual Control - Control LEDs interactively")
+    print("3) Both - Run patterns first, then manual control")
     
     try:
         setup_leds()
         
-        # Test sequence
-        all_leds_on(5)
-        individual_led_test()
-        blink_pattern_all(5)
-        chase_pattern(3)
-        rapid_blink_test()
-        status_simulation()
+        while True:
+            try:
+                choice = input("\nEnter your choice (1, 2, 3, or 'q' to quit): ").strip()
+                
+                if choice.lower() in ['q', 'quit', 'exit']:
+                    print("Exiting LED test...")
+                    break
+                    
+                elif choice == '1':
+                    run_pattern_tests()
+                    break
+                    
+                elif choice == '2':
+                    manual_led_control()
+                    break
+                    
+                elif choice == '3':
+                    run_pattern_tests()
+                    print("\n" + "=" * 60)
+                    print("Now switching to Manual Control Mode...")
+                    manual_led_control()
+                    break
+                    
+                else:
+                    print("❌ Invalid choice. Please enter 1, 2, 3, or 'q'.")
+                    
+            except KeyboardInterrupt:
+                print("\n\n⚠️ Test interrupted by user")
+                break
         
-        print("\n" + "=" * 50) 
-        print("✅ LED Pattern Test Complete!")
-        print("If all LEDs responded correctly, your wiring is good.")
-        print("=" * 50)
-        
-    except KeyboardInterrupt:
-        print("\n\n⚠️ Test interrupted by user")
     except Exception as e:
         print(f"\n❌ Error during LED test: {e}")
     finally:
