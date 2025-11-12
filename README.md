@@ -705,12 +705,152 @@ The BathyImager system uses GPIO-controlled LEDs to provide visual status feedba
 
 ```json
 {
-  "led_power_pin": 18,    # Power/Status LED (GPIO 18)
-  "led_gps_pin": 23,      # GPS Status LED (GPIO 23) 
-  "led_camera_pin": 24,   # Camera Status LED (GPIO 24)
-  "led_error_pin": 25     # Error Status LED (GPIO 25)
+  "led_power_pin": 18,    # Power/Status LED (GPIO 18, Physical Pin 12)
+  "led_gps_pin": 23,      # GPS Status LED (GPIO 23, Physical Pin 16) 
+  "led_camera_pin": 24,   # Camera Status LED (GPIO 24, Physical Pin 18)
+  "led_error_pin": 25     # Error Status LED (GPIO 25, Physical Pin 22)
 }
 ```
+
+## 🔌 Adafruit Ultimate GPS HAT Wiring Diagram
+
+**Hardware**: [Adafruit Ultimate GPS HAT #2324](https://www.adafruit.com/product/2324)
+
+### GPS HAT Connections (Automatic via HAT)
+The GPS HAT automatically connects to these Raspberry Pi pins when installed:
+
+```
+Adafruit Ultimate GPS HAT                    Raspberry Pi GPIO Header
+┌─────────────────────────────────────┐     ┌──────────────────────────────────┐
+│ GPS HAT (40-pin connector)          │◄────┤ 40-pin GPIO Header               │
+│                                     │     │                                  │
+│ Automatic Connections:              │     │ Automatic Connections:           │
+│ ├─ 5V Power Rail ───────────────────┼─────┤ Pin 2/4 (5V)                    │
+│ ├─ Ground Rail ─────────────────────┼─────┤ Pin 6/9/14/20/25/30/34/39 (GND) │
+│ ├─ UART TX ─────────────────────────┼─────┤ Pin 8 (GPIO 14/TXD)             │
+│ ├─ UART RX ─────────────────────────┼─────┤ Pin 10 (GPIO 15/RXD)            │
+│ ├─ PPS Signal ──────────────────────┼─────┤ Pin 7 (GPIO 4) ⚡ PPS INPUT     │
+│ ├─ I2C SDA ─────────────────────────┼─────┤ Pin 3 (GPIO 2/SDA)              │
+│ ├─ I2C SCL ─────────────────────────┼─────┤ Pin 5 (GPIO 3/SCL)              │
+│ └─ HAT EEPROM ──────────────────────┼─────┤ EEPROM Detection                 │
+└─────────────────────────────────────┘     └──────────────────────────────────┘
+
+✅ NO MANUAL WIRING NEEDED - HAT automatically connects all GPS functions
+```
+
+### LED Status Indicators (Manual Wiring to HAT Prototyping Area)
+
+```
+LED Wiring to GPS HAT Prototyping Area:
+┌─────────────────────────────────────┐
+│ Adafruit GPS HAT Prototyping Area   │
+│                                     │
+│  [#4] [#5] [#6] [#7] [#8] [#9]     │ ← GPIO pins available on HAT
+│   │                                 │
+│  [#10][#11][#12][#13][#14][#15]    │
+│   │    │    │     │    │     │      │
+│  [#16][#17][#18] [#19][#20][#21]   │
+│   │    │    │     │    │     │      │
+│  [#22][#23][#24] [#25][#26][#27]   │
+│   │    │    │     │              │
+│  [GND][5V][3V3] [Various GPIO]     │
+│   │    │    │                      │
+│   └────┼────┼──────────────────────┤
+│        │    └─── Power for LEDs    │
+│        └──────── Ground Reference  │
+└─────────────────────────────────────┘
+
+LED Connections:
+┌─────────────────────────────────────────────────────────────────────┐
+│                        LED WIRING DIAGRAM                           │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│ Power LED (Green):                                                  │
+│   GPS HAT Pin #18 ──► 220Ω Resistor ──► Green LED (+) ──┐         │
+│                                                           │         │
+│   GPS HAT GND ◄─────────────────────── Green LED (-) ◄───┘         │
+│                                                                     │
+│ GPS Status LED (Blue):                                              │
+│   GPS HAT Pin #23 ──► 220Ω Resistor ──► Blue LED (+) ───┐         │
+│                                                           │         │
+│   GPS HAT GND ◄─────────────────────── Blue LED (-) ◄────┘         │
+│                                                                     │
+│ Camera LED (Yellow):                                                │
+│   GPS HAT Pin #24 ──► 220Ω Resistor ──► Yellow LED (+) ─┐         │
+│                                                           │         │
+│   GPS HAT GND ◄─────────────────────── Yellow LED (-) ◄──┘         │
+│                                                                     │
+│ Error LED (Red):                                                    │
+│   GPS HAT Pin #25 ──► 220Ω Resistor ──► Red LED (+) ────┐         │
+│                                                           │         │
+│   GPS HAT GND ◄─────────────────────── Red LED (-) ◄─────┘         │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+
+Physical Pin Mapping:
+• GPIO 4  (Pin 7)  = PPS Signal (automatic via HAT)
+• GPIO 18 (Pin 12) = Power LED (Green)
+• GPIO 23 (Pin 16) = GPS Status LED (Blue)  
+• GPIO 24 (Pin 18) = Camera Status LED (Yellow)
+• GPIO 25 (Pin 22) = Error LED (Red)
+```
+
+### Detailed Wiring Instructions
+
+#### Materials Needed:
+- 4x LEDs (Green, Blue, Yellow, Red)
+- 4x 220Ω current-limiting resistors  
+- Jumper wires or hookup wire
+- Breadboard or direct soldering to HAT prototyping area
+
+#### Step-by-Step Wiring:
+
+1. **Install GPS HAT** (powers down Pi first):
+   ```bash
+   sudo shutdown -h now
+   # Install HAT onto 40-pin GPIO header
+   # Power on Pi
+   ```
+
+2. **LED Wiring** (can be done with Pi powered on):
+   
+   **Green Power LED (GPIO 18, Pin 12):**
+   ```
+   HAT Pin #18 → 220Ω Resistor → Green LED Long Leg (+)
+   Green LED Short Leg (-) → HAT GND
+   ```
+   
+   **Blue GPS LED (GPIO 23, Pin 16):**
+   ```
+   HAT Pin #23 → 220Ω Resistor → Blue LED Long Leg (+)
+   Blue LED Short Leg (-) → HAT GND
+   ```
+   
+   **Yellow Camera LED (GPIO 24, Pin 18):**
+   ```
+   HAT Pin #24 → 220Ω Resistor → Yellow LED Long Leg (+)
+   Yellow LED Short Leg (-) → HAT GND
+   ```
+   
+   **Red Error LED (GPIO 25, Pin 22):**
+   ```
+   HAT Pin #25 → 220Ω Resistor → Red LED Long Leg (+)
+   Red LED Short Leg (-) → HAT GND
+   ```
+
+3. **PPS Connection** (Automatic):
+   ```
+   ✅ PPS signal automatically connected to GPIO 4 (Pin 7) via HAT
+   ✅ No manual wiring needed for PPS functionality
+   ```
+
+### Key Features Confirmed:
+- **PPS Signal**: ✅ GPIO 4 (Physical Pin 7) - automatic via HAT
+- **Hardware UART**: ✅ /dev/ttyAMA0 (GPIO 14/15) - automatic via HAT  
+- **Power**: ✅ 5V from Pi power rail - automatic via HAT
+- **I2C**: ✅ Available on SDA/SCL pins - automatic via HAT
+- **Prototyping Area**: ✅ Available for LED connections
+- **RTC Battery**: ✅ CR1220 slot for timekeeping backup
 
 #### LED Status Patterns
 
