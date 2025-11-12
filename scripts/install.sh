@@ -215,14 +215,21 @@ install_system_dependencies() {
         setserial \
         usbutils
     
-    # Time synchronization and GPS HAT support  
+    # Time synchronization and GPS HAT support
+    # Install basic GPS and timing tools first
+    print_status "Installing GPS and timing tools..."
     apt-get install -y \
-        systemd-timesyncd \
         tzdata \
         pps-tools \
         gpsd \
-        gpsd-clients \
-        chrony
+        gpsd-clients
+    
+    # Handle chrony installation separately to avoid conflicts
+    print_status "Installing chrony for GPS PPS support..."
+    if ! install_chrony_with_conflict_resolution; then
+        print_warning "Chrony installation failed - GPS PPS timing may not be optimal"
+        print_warning "You can manually install chrony later with: sudo apt install chrony"
+    fi
     
     # System utilities
     apt-get install -y \
@@ -233,6 +240,59 @@ install_system_dependencies() {
         tree
     
     print_success "System dependencies installed"
+}
+
+# Function to install chrony with conflict resolution
+install_chrony_with_conflict_resolution() {
+    print_status "Resolving time synchronization conflicts..."
+    
+    # Check if chrony is already installed
+    if command -v chronyd &> /dev/null; then
+        print_success "chrony is already installed"
+        return 0
+    fi
+    
+    # Stop conflicting time services
+    local services_stopped=false
+    
+    if systemctl is-active --quiet systemd-timesyncd 2>/dev/null; then
+        print_status "Stopping systemd-timesyncd to avoid conflicts"
+        if systemctl stop systemd-timesyncd 2>/dev/null && systemctl disable systemd-timesyncd 2>/dev/null; then
+            services_stopped=true
+            print_success "systemd-timesyncd stopped and disabled"
+        else
+            print_warning "Failed to stop systemd-timesyncd"
+        fi
+    fi
+    
+    if systemctl is-active --quiet ntp 2>/dev/null; then
+        print_status "Stopping ntp service to avoid conflicts"
+        systemctl stop ntp 2>/dev/null || true
+        systemctl disable ntp 2>/dev/null || true
+    fi
+    
+    # Try to install chrony
+    print_status "Installing chrony..."
+    if apt-get install -y chrony 2>/dev/null; then
+        print_success "chrony installed successfully"
+        return 0
+    else
+        print_error "Failed to install chrony due to package conflicts"
+        
+        # Try to resolve conflicts by removing conflicting packages
+        print_status "Attempting to resolve package conflicts..."
+        if apt-get remove --purge -y systemd-timesyncd 2>/dev/null; then
+            print_status "Removed systemd-timesyncd, retrying chrony installation..."
+            if apt-get install -y chrony 2>/dev/null; then
+                print_success "chrony installed after conflict resolution"
+                return 0
+            fi
+        fi
+        
+        print_error "Could not resolve chrony installation conflicts"
+        print_warning "GPS PPS timing will not be available without chrony"
+        return 1
+    fi
 }
 
 # Function to create system user and directories
@@ -599,9 +659,48 @@ EOF
     print_success "Device permissions configured"
 }
 
+# Function to resolve time synchronization conflicts
+resolve_time_sync_conflicts() {
+    print_status "Resolving time synchronization conflicts for GPS HAT..."
+    
+    # Check current time sync services
+    SYSTEMD_TIMESYNCD_ACTIVE=false
+    CHRONY_INSTALLED=false
+    
+    if systemctl is-active --quiet systemd-timesyncd 2>/dev/null; then
+        SYSTEMD_TIMESYNCD_ACTIVE=true
+        print_status "systemd-timesyncd is currently active"
+    fi
+    
+    if command -v chronyd &> /dev/null; then
+        CHRONY_INSTALLED=true
+        print_status "chrony is already installed"
+    fi
+    
+    # Stop systemd-timesyncd if active to prevent conflicts
+    if $SYSTEMD_TIMESYNCD_ACTIVE; then
+        print_status "Stopping systemd-timesyncd to prevent conflicts with chrony"
+        systemctl stop systemd-timesyncd || true
+        systemctl disable systemd-timesyncd || true
+        print_success "systemd-timesyncd stopped and disabled"
+    fi
+    
+    # Install chrony if not present
+    if ! $CHRONY_INSTALLED; then
+        print_status "Installing chrony for GPS PPS support..."
+        apt-get install -y chrony
+        print_success "chrony installed"
+    else
+        print_success "chrony already installed"
+    fi
+}
+
 # Function to configure GPS HAT hardware
 configure_gps_hat() {
     print_status "Configuring Adafruit Ultimate GPS HAT..."
+    
+    # Resolve time sync conflicts first
+    resolve_time_sync_conflicts
     
     # Check if /boot/firmware/config.txt exists (newer Pi OS) or /boot/config.txt (older)
     if [ -f "/boot/firmware/config.txt" ]; then
@@ -652,13 +751,43 @@ configure_gps_hat() {
     fi
     
     # Configure Chrony for GPS HAT time synchronization
-    if [ -f "/etc/chrony/chrony.conf" ]; then
-        # Backup original chrony config
-        cp /etc/chrony/chrony.conf /etc/chrony/chrony.conf.backup.$(date +%Y%m%d_%H%M%S)
-        
-        # Add GPS HAT time sources to Chrony configuration
-        if ! grep -q "refclock SHM 0" /etc/chrony/chrony.conf; then
-            cat >> /etc/chrony/chrony.conf << 'EOF'
+    configure_chrony_for_gps_hat
+    
+    print_success "GPS HAT hardware configuration complete"
+    print_warning "REBOOT REQUIRED for GPS HAT changes to take effect"
+}
+
+# Function to configure chrony for GPS HAT
+configure_chrony_for_gps_hat() {
+    print_status "Configuring chrony for GPS HAT time synchronization..."
+    
+    # Check if chrony is installed
+    if ! command -v chronyd &> /dev/null; then
+        print_warning "chrony not installed - skipping GPS time synchronization setup"
+        return 1
+    fi
+    
+    local chrony_conf="/etc/chrony/chrony.conf"
+    
+    if [ ! -f "$chrony_conf" ]; then
+        print_warning "chrony configuration file not found at $chrony_conf"
+        return 1
+    fi
+    
+    # Backup original chrony config
+    if [ ! -f "${chrony_conf}.backup.original" ]; then
+        cp "$chrony_conf" "${chrony_conf}.backup.original"
+        print_status "Created backup of original chrony configuration"
+    fi
+    
+    # Create timestamped backup
+    cp "$chrony_conf" "${chrony_conf}.backup.$(date +%Y%m%d_%H%M%S)"
+    
+    # Remove any existing GPS HAT configuration
+    sed -i '/# GPS HAT Time Sources for BathyCat/,/^$/d' "$chrony_conf"
+    
+    # Add GPS HAT time sources to Chrony configuration
+    cat >> "$chrony_conf" << 'EOF'
 
 # GPS HAT Time Sources for BathyCat
 # NMEA time reference from GPS UART
@@ -671,21 +800,45 @@ refclock PPS /dev/pps0 trust lock NMEA refid PPS
 allow 192.168.0.0/16
 allow 10.0.0.0/8
 allow 172.16.0.0/12
+
+# Comment out pool servers when GPS is primary time source
+# pool 2.debian.pool.ntp.org iburst
 EOF
-            print_success "Chrony configured for GPS HAT time sources"
-        else
-            print_success "Chrony GPS HAT configuration already present"
-        fi
-        
-        # Enable and start chrony service
-        systemctl enable chrony
-        print_success "Chrony NTP service enabled"
+    
+    print_success "Chrony configured for GPS HAT time sources"
+    
+    # Enable chrony service
+    if systemctl enable chrony 2>/dev/null; then
+        print_success "chrony service enabled"
     else
-        print_warning "Chrony configuration file not found"
+        print_warning "Failed to enable chrony service"
     fi
     
-    print_success "GPS HAT hardware configuration complete"
-    print_warning "REBOOT REQUIRED for GPS HAT changes to take effect"
+    # Start chrony service
+    if systemctl start chrony 2>/dev/null; then
+        print_success "chrony service started"
+    else
+        print_warning "Failed to start chrony service - will start after reboot"
+    fi
+    
+    # Verify no conflicting time services are running
+    local conflicts_found=false
+    
+    if systemctl is-active --quiet systemd-timesyncd 2>/dev/null; then
+        print_warning "systemd-timesyncd is still active - this may conflict with chrony"
+        conflicts_found=true
+    fi
+    
+    if systemctl is-active --quiet ntp 2>/dev/null; then
+        print_warning "ntp service is still active - this may conflict with chrony"
+        conflicts_found=true
+    fi
+    
+    if ! $conflicts_found; then
+        print_success "No conflicting time services detected"
+    fi
+    
+    return 0
 }
 
 # Function to configure log rotation
@@ -881,14 +1034,21 @@ show_summary() {
     echo "Stop main service:       sudo systemctl stop $SERVICE_NAME"
     echo "Check time sync status:  timedatectl status"
     echo
+    echo "Time Synchronization Status:"
+    echo "============================"
+    echo "  systemd-timesyncd: $(systemctl is-active systemd-timesyncd 2>/dev/null || echo 'inactive')"
+    echo "  chrony: $(systemctl is-active chrony 2>/dev/null || echo 'not installed')"
+    echo "  GPS PPS device: $(ls /dev/pps* 2>/dev/null || echo 'not available (needs reboot + GPS fix)')"
+    echo
     echo "Next Steps:"
     echo "==========="
-    echo "1. Connect USB camera and GPS device"
+    echo "1. Connect USB camera and GPS HAT (if not already connected)"
     echo "2. Insert USB storage device"
-    echo "3. Reboot to test GPS time synchronization (or run: sudo systemctl start gps-boot-sync)"
+    echo "3. REBOOT to enable GPS HAT PPS support"
     echo "4. Check service logs for any errors (journalctl -u bathyimager -f)"
-    echo "5. Verify GPS time sync (journalctl -u gps-boot-sync)"
-    echo "6. Test image capture functionality"
+    echo "5. Verify GPS PPS timing: sudo ppstest /dev/pps0 (after GPS fix)"
+    echo "6. Check chrony GPS sources: sudo chronyc sources -v"
+    echo "7. Test image capture functionality"
     echo
     
     if [[ "$DEV_MODE" == true ]]; then
