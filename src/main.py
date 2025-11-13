@@ -532,7 +532,6 @@ class BathyCatService:
             
             # Update sequence counter for unique filenames
             self._update_sequence_counter(timestamp)
-            self.logger.debug(f"🔢 Using sequence counter: {self.image_sequence_counter}")
             
             # Save to storage
             save_start = time.perf_counter()
@@ -675,8 +674,9 @@ class BathyCatService:
             self.image_sequence_counter += 1
             self.logger.debug(f"🔢 Incremented sequence counter to: {self.image_sequence_counter}")
             
-        # Log every sequence change for debugging during testing
-        self.logger.info(f"📊 Using image sequence counter: {self.image_sequence_counter} for date: {current_date}")
+        # Log periodic sequence info for debugging (every 100 images)
+        if self.image_sequence_counter % 100 == 0:
+            self.logger.debug(f"📊 Image sequence counter: {self.image_sequence_counter}")
     
     def _check_component_health(self) -> None:
         """Check health of all system components."""

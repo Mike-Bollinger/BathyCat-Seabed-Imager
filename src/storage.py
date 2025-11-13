@@ -59,7 +59,7 @@ class StorageManager:
         self.filename_format = config.get('filename_format', 'timestamp')  # 'timestamp' or 'counter'
         
         # Debug sequence counter configuration
-        self.logger.info(f"🔢 Storage initialized with use_sequence_counter: {self.use_sequence_counter}")
+        self.logger.info(f"🔢 Storage initialized with use_sequence_counter: {self.use_sequence_counter} (type: {type(self.use_sequence_counter)})")
         
         # Define structured paths
         self.images_path = os.path.join(self.base_path, 'images')
@@ -253,10 +253,12 @@ class StorageManager:
         if self.use_sequence_counter and sequence_counter is not None:
             # Counter format with dashes: bathyimgtest_20251105-174300-082_00123.jpg
             filename = f"{self.filename_prefix}_{date_part}-{time_part}-{milliseconds:03d}_{sequence_counter:05d}.jpg"
+            self.logger.info(f"✅ Using provided sequence counter {sequence_counter} → filename: {filename}")
         else:
             # Generate auto-incrementing counter based on existing files in directory
             counter = self._get_next_file_counter(dir_path, date_part, time_part, milliseconds)
             filename = f"{self.filename_prefix}_{date_part}-{time_part}-{milliseconds:03d}_{counter:05d}.jpg"
+            self.logger.info(f"🔄 Generated auto counter {counter} (use_seq: {self.use_sequence_counter}, seq_counter: {sequence_counter}) → filename: {filename}")
         
         return os.path.join(dir_path, filename)
     
@@ -326,9 +328,9 @@ class StorageManager:
                     return None
             
             # Get image path
-            self.logger.debug(f"🔢 Storage received sequence counter: {sequence_counter}, use_sequence_counter: {self.use_sequence_counter}")
+            self.logger.info(f"🔢 Storage received sequence counter: {sequence_counter}, use_sequence_counter: {self.use_sequence_counter}")
             filepath = self.get_image_path(timestamp, sequence_counter)
-            self.logger.debug(f"📁 Generated filepath: {filepath}")
+            self.logger.info(f"📁 Generated filepath: {os.path.basename(filepath)}")
             
             # Write image data
             with open(filepath, 'wb') as f:
