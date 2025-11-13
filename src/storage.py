@@ -58,6 +58,9 @@ class StorageManager:
         self.use_sequence_counter = config.get('use_sequence_counter', False)
         self.filename_format = config.get('filename_format', 'timestamp')  # 'timestamp' or 'counter'
         
+        # Debug sequence counter configuration
+        self.logger.info(f"🔢 Storage initialized with use_sequence_counter: {self.use_sequence_counter}")
+        
         # Define structured paths
         self.images_path = os.path.join(self.base_path, 'images')
         
@@ -323,7 +326,9 @@ class StorageManager:
                     return None
             
             # Get image path
+            self.logger.debug(f"🔢 Storage received sequence counter: {sequence_counter}, use_sequence_counter: {self.use_sequence_counter}")
             filepath = self.get_image_path(timestamp, sequence_counter)
+            self.logger.debug(f"📁 Generated filepath: {filepath}")
             
             # Write image data
             with open(filepath, 'wb') as f:

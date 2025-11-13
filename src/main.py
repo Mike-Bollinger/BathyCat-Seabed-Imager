@@ -354,6 +354,7 @@ class BathyCatService:
                 self._update_led_status()
             
             self.logger.info("BathyCat initialization complete")
+            self.logger.info(f"🚀 Image sequence counter initialized: {self.image_sequence_counter}, current date: {self.current_date}")
             return True
             
         except Exception as e:
@@ -531,6 +532,7 @@ class BathyCatService:
             
             # Update sequence counter for unique filenames
             self._update_sequence_counter(timestamp)
+            self.logger.debug(f"🔢 Using sequence counter: {self.image_sequence_counter}")
             
             # Save to storage
             save_start = time.perf_counter()
@@ -667,13 +669,14 @@ class BathyCatService:
         if current_date != self.current_date:
             self.current_date = current_date
             self.image_sequence_counter = 1
-            self.logger.info(f"📅 Date changed to {current_date}, resetting image sequence counter")
+            self.logger.info(f"📅 Date changed to {current_date}, resetting image sequence counter to 1")
         else:
+            # Increment counter for same day
             self.image_sequence_counter += 1
+            self.logger.debug(f"🔢 Incremented sequence counter to: {self.image_sequence_counter}")
             
-        # Log periodic sequence info for debugging
-        if self.image_sequence_counter % 100 == 0:
-            self.logger.debug(f"📊 Image sequence counter: {self.image_sequence_counter}")
+        # Log every sequence change for debugging during testing
+        self.logger.info(f"📊 Using image sequence counter: {self.image_sequence_counter} for date: {current_date}")
     
     def _check_component_health(self) -> None:
         """Check health of all system components."""
