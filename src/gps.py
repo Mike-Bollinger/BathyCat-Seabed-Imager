@@ -87,13 +87,16 @@ class GPS:
         self.is_connected = False
         self.is_running = False
         
-        # GPS settings from config
-        self.port = config.get('gps_port', '/dev/ttyUSB0')
-        self.baudrate = config.get('gps_baudrate', 9600)
-        self.timeout = config.get('gps_timeout', 1.0)
-        self.time_sync = config.get('gps_time_sync', True)
-        self.require_fix = config.get('require_gps_fix', False)
-        self.fix_timeout = config.get('gps_fix_timeout', 300.0)
+        # GPS settings from config - critical settings must be provided in config file
+        if 'gps_port' not in config:
+            raise GPSError("GPS port not specified in configuration - please set 'gps_port' in config file")
+        
+        self.port = config['gps_port']  # No fallback - must be explicitly configured
+        self.baudrate = config.get('gps_baudrate', 9600)  # Reasonable fallback
+        self.timeout = config.get('gps_timeout', 1.0)  # Reasonable fallback
+        self.time_sync = config.get('gps_time_sync', True)  # Reasonable fallback
+        self.require_fix = config.get('require_gps_fix', False)  # Reasonable fallback
+        self.fix_timeout = config.get('gps_fix_timeout', 300.0)  # Reasonable fallback
         
         # GPS state
         self.current_fix: Optional[GPSFix] = None
@@ -603,14 +606,14 @@ def test_gps(config: Dict[str, Any]) -> bool:
 
 
 if __name__ == "__main__":
-    # Test configuration
+    # Test configuration matching bathyimager_config.json
     test_config = {
-        'gps_port': '/dev/ttyUSB0',
+        'gps_port': '/dev/ttyAMA0',  # GPS HAT hardware UART
         'gps_baudrate': 9600,
         'gps_timeout': 1.0,
         'gps_time_sync': True,
         'require_gps_fix': False,
-        'gps_fix_timeout': 30.0
+        'gps_fix_timeout': 300.0
     }
     
     success = test_gps(test_config)
