@@ -124,9 +124,9 @@ class PPSSystemValidator:
             with serial.Serial('/dev/serial0', 9600, timeout=3) as gps_conn:
                 for _ in range(10):  # Check 10 sentences
                     sentence = gps_conn.readline().decode('ascii', errors='ignore').strip()
-                    if sentence.startswith('$GPGGA'):
+                    if sentence.startswith('$GPGGA') or sentence.startswith('$GNGGA'):
                         parts = sentence.split(',')
-                        if len(parts) > 6 and parts[6] and int(parts[6]) > 0:
+                        if len(parts) >= 15 and parts[6] and int(parts[6]) > 0:
                             self.logger.info(f"   GPS fix quality: {parts[6]}, satellites: {parts[7] if len(parts) > 7 else 'N/A'}")
                             return True
             return False

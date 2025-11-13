@@ -15,3 +15,6 @@ KERNEL=="gpiomem", GROUP="gpio", MODE="0664"
 
 # Memory device access (for GPIO fallback)
 KERNEL=="mem", GROUP="gpio", MODE="0664"
+
+# PPS devices (Pulse Per Second timing from GPS HAT)
+KERNEL=="pps[0-9]*", GROUP="dialout", MODE="0664"
