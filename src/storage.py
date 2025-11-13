@@ -254,15 +254,16 @@ class StorageManager:
         time_part = timestamp.strftime('%H%M%S')
         milliseconds = int(timestamp.microsecond / 1000)  # Convert microseconds to milliseconds
         
-        if self.use_sequence_counter and sequence_counter is not None:
-            # Counter format with dashes: bathyimgtest_20251105-174300-082_00123.jpg
+        # Always use the sequence counter from main.py when provided
+        if sequence_counter is not None and sequence_counter > 0:
+            # Use the sequence counter from the main application (simple enumeration)
             filename = f"{self.filename_prefix}_{date_part}-{time_part}-{milliseconds:03d}_{sequence_counter:05d}.jpg"
-            self.logger.info(f"✅ Using provided sequence counter {sequence_counter} → filename: {filename}")
+            self.logger.debug(f"✅ Using sequence counter {sequence_counter} → {filename}")
         else:
-            # Generate auto-incrementing counter based on existing files in directory
+            # Fallback: Generate auto-incrementing counter (shouldn't happen in normal operation)
             counter = self._get_next_file_counter(dir_path, date_part, time_part, milliseconds)
             filename = f"{self.filename_prefix}_{date_part}-{time_part}-{milliseconds:03d}_{counter:05d}.jpg"
-            self.logger.info(f"🔄 Generated auto counter {counter} (use_seq: {self.use_sequence_counter}, seq_counter: {sequence_counter}) → filename: {filename}")
+            self.logger.warning(f"🔄 Using auto counter {counter} (sequence_counter was {sequence_counter}) → {filename}")
         
         return os.path.join(dir_path, filename)
     
@@ -332,9 +333,7 @@ class StorageManager:
                     return None
             
             # Get image path
-            self.logger.info(f"🔢 Storage received sequence counter: {sequence_counter}, use_sequence_counter: {self.use_sequence_counter}")
             filepath = self.get_image_path(timestamp, sequence_counter)
-            self.logger.info(f"📁 Generated filepath: {os.path.basename(filepath)}")
             
             # Write image data
             with open(filepath, 'wb') as f:

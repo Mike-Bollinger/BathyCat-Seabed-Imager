@@ -535,6 +535,7 @@ class BathyCatService:
             
             # Save to storage
             save_start = time.perf_counter()
+            self.logger.debug(f"🔢 Passing sequence counter {self.image_sequence_counter} to storage")
             filepath = self.storage.save_image(processed_image, timestamp, self.image_sequence_counter)
             save_time = (time.perf_counter() - save_start) * 1000  # ms
             
