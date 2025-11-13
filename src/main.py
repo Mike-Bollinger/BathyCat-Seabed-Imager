@@ -955,8 +955,13 @@ def load_config(config_path: str = None) -> Dict[str, Any]:
     import os
     
     if config_path is None:
-        # Look for config in common locations
+        # Look for config in common locations - prioritize local development directory
         possible_paths = [
+            '../config/bathyimager_config.json',  # Development: run from src/ directory
+            './config/bathyimager_config.json',   # Development: run from root directory  
+            '/etc/bathycat/bathyimager_config.json',      # Production system config
+            '/usr/local/etc/bathycat/bathyimager_config.json',  # Alternative system config
+            # Legacy paths for backward compatibility
             '/etc/bathycat/config.json',
             '/usr/local/etc/bathycat/config.json',
             './config/bathycat_config.json',

@@ -50,7 +50,7 @@ class CameraConfig:
 @dataclass
 class GPSConfig:
     """GPS configuration settings."""
-    port: str = "/dev/ttyUSB0"
+    port: str = "/dev/ttyAMA0"  # Default to GPIO UART for GPS HAT (was /dev/ttyUSB0)
     baudrate: int = 9600
     timeout: float = 2.0
     fix_timeout: float = 30.0
@@ -315,11 +315,12 @@ class EnvironmentDetector:
         """Detect available GPS/serial devices."""
         gps_devices = []
         
-        # Common GPS device paths
+        # Common GPS device paths - prioritize GPIO UART for GPS HAT, then USB
         common_paths = [
-            "/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyUSB2",
-            "/dev/ttyACM0", "/dev/ttyACM1", "/dev/ttyACM2",
-            "/dev/serial0", "/dev/ttyAMA0"
+            "/dev/ttyAMA0",  # GPIO UART for GPS HAT (primary)
+            "/dev/serial0",  # GPIO UART alternative
+            "/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyUSB2",  # USB GPS devices
+            "/dev/ttyACM0", "/dev/ttyACM1", "/dev/ttyACM2"   # USB ACM devices
         ]
         
         for device_path in common_paths:
