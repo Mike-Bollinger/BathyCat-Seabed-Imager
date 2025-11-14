@@ -1,6 +1,6 @@
 # BathyCat Seabed Imager
 
-![BathyCat Seabed Imager](https://github.com/Mike-Bollinger/BathyCat-Seabed-Imager/blob/main/docs/BathyCat-Seabed-Imager_Image.png)
+<img src="https://github.com/Mike-Bollinger/BathyCat-Seabed-Imager/blob/main/docs/BathyCat-Seabed-Imager_Image.png" alt="BathyCat Seabed Imager" width="50%">
 
 **Autonomous underwater imaging system for marine research and seabed mapping**
 
