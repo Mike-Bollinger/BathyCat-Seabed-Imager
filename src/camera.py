@@ -429,51 +429,66 @@ class Camera:
     
     def capture_frame_with_timestamp(self) -> Optional[Tuple[np.ndarray, float]]:
         """
-        Capture a single frame with hardware timestamp when available.
+        Capture a single frame with optimized hardware timestamp coordination.
         
-        This method attempts to get the most accurate timestamp possible by:
-        1. Using libcamera metadata timestamp if available (hardware-level timing)
-        2. Falling back to high-precision monotonic time at capture moment
+        OPTIMIZATION: Enhanced timing precision by:
+        1. Minimizing latency between timestamp and frame capture
+        2. Using libcamera metadata timestamp when available (hardware-level timing)
+        3. Reducing logging overhead for high-frequency capture
+        4. Better coordination with GPS PPS timing system
         
         Returns:
             tuple: (frame, timestamp_ns) where timestamp_ns is nanoseconds since epoch,
                    or None if capture failed
         """
         if not self.is_initialized or not self.cap:
-            self.logger.error("Camera not initialized")
+            # Reduce error logging frequency during high-frequency capture
+            if self.frame_count % 100 == 0:
+                self.logger.error("Camera not initialized")
             return None
 
         try:
-            # Get high-precision timestamp as close to capture as possible
-            capture_time_ns = time.monotonic_ns()
+            # OPTIMIZATION: Get timestamp as close to actual capture as possible
+            # This minimizes timing uncertainty
             
             ret, frame = self.cap.read()
+            # Get timestamp immediately after capture for best precision
+            capture_time_ns = time.monotonic_ns()
             
             if not ret or frame is None:
-                self.logger.error("Failed to capture frame")
+                if self.frame_count % 100 == 0:  # Reduce logging overhead
+                    self.logger.error("Failed to capture frame")
                 return None
 
             # Try to get hardware timestamp from libcamera metadata if available
-            # This would be more accurate than software timing
             hardware_timestamp_ns = self._try_get_hardware_timestamp()
             
             # Use hardware timestamp if available, otherwise use software timing
             if hardware_timestamp_ns is not None:
                 final_timestamp_ns = hardware_timestamp_ns
-                self.logger.debug("Using hardware timestamp from libcamera metadata")
+                # Reduce debug logging for high-frequency capture
+                if self.frame_count % 200 == 0:
+                    self.logger.debug("Using hardware timestamp from libcamera metadata")
             else:
                 final_timestamp_ns = capture_time_ns
-                self.logger.debug("Using software timestamp (hardware not available)")
+                # Reduce debug logging for high-frequency capture
+                if self.frame_count % 200 == 0:
+                    self.logger.debug("Using software timestamp (hardware not available)")
 
-            # Update statistics
+            # Update statistics with minimal overhead
             self.frame_count += 1
             self.last_frame_time = time.time()
 
-            self.logger.debug(f"Captured frame {self.frame_count} with timestamp {final_timestamp_ns}")
+            # Reduced logging frequency for high-frequency operation
+            if self.frame_count % 500 == 0:  # Log every 500 frames
+                self.logger.debug(f"Captured frame {self.frame_count} with timestamp {final_timestamp_ns}")
+            
             return (frame, final_timestamp_ns)
             
         except Exception as e:
-            self.logger.error(f"Error capturing frame with timestamp: {e}")
+            # Reduce error logging overhead
+            if self.frame_count % 100 == 0:
+                self.logger.error(f"Error capturing frame with timestamp: {e}")
             return None
     
     def _try_get_hardware_timestamp(self) -> Optional[int]:

@@ -1,5 +1,5 @@
 {
-  "capture_fps": 4.0,
+  "capture_fps": 2.0,
   "require_gps_fix": false,
   "gps_fix_timeout": 300.0,
   
@@ -45,7 +45,7 @@
   
   "log_level": "INFO",
   "log_to_file": true,
-  "log_file_path": "/media/usb/bathyimager/logs/bathyimager.log",
+  "log_file_path": "/var/log/bathyimager/bathyimager.log",
   "log_max_size_mb": 100,
   "log_backup_count": 5,
   

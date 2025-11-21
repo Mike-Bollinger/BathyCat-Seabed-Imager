@@ -398,8 +398,7 @@ class ImageProcessor:
                 exif_dict['0th'][piexif.ImageIFD.Model] = "exploreHD 3.0"
                 self.logger.debug("Using fallback camera info: DeepWater Exploration exploreHD 3.0")
             
-            # Image description
-            exif_dict['0th'][piexif.ImageIFD.ImageDescription] = "Autonomous seabed imagery"
+            # REMOVED: ImageDescription tag for performance optimization
             
         except Exception as e:
             self.logger.debug(f"Could not add software metadata: {e}")
@@ -467,14 +466,14 @@ class ImageProcessor:
                     exif_dict['Exif'][piexif.ExifIFD.ExposureTime] = self._float_to_rational(exposure_val)
                     exif_dict['Exif'][piexif.ExifIFD.ShutterSpeedValue] = self._float_to_rational(1.0 / max(exposure_val, 0.001))
                 
-                # Exposure mode
+                # Exposure mode (keep ExposureMode but remove ExposureProgram for performance)
                 auto_exposure = camera_params.get('auto_exposure', 0)
                 if auto_exposure == 0.75:  # Auto mode
                     exif_dict['Exif'][piexif.ExifIFD.ExposureMode] = 0  # Auto
-                    exif_dict['Exif'][piexif.ExifIFD.ExposureProgram] = 2  # Program auto
+                    # REMOVED: ExposureProgram tag for performance optimization
                 else:  # Manual mode (0.25)
                     exif_dict['Exif'][piexif.ExifIFD.ExposureMode] = 1  # Manual
-                    exif_dict['Exif'][piexif.ExifIFD.ExposureProgram] = 1  # Manual
+                    # REMOVED: ExposureProgram tag for performance optimization
             
             # White balance
             if 'auto_wb' in camera_params:
@@ -497,32 +496,8 @@ class ImageProcessor:
                 iso_value = max(100, int(100 + gain_val * 10))  # Basic conversion
                 exif_dict['Exif'][piexif.ExifIFD.ISOSpeedRatings] = iso_value
             
-            # Brightness
-            if 'brightness' in camera_params and camera_params['brightness'] is not None:
-                brightness_val = float(camera_params['brightness'])
-                exif_dict['Exif'][piexif.ExifIFD.BrightnessValue] = self._float_to_rational(brightness_val)
-            
-            # Contrast
-            if 'contrast' in camera_params and camera_params['contrast'] is not None:
-                contrast_val = float(camera_params['contrast'])
-                # Map contrast to EXIF standard (0=normal, 1=low, 2=high)
-                if contrast_val < 40:
-                    exif_dict['Exif'][piexif.ExifIFD.Contrast] = 1  # Low
-                elif contrast_val > 60:
-                    exif_dict['Exif'][piexif.ExifIFD.Contrast] = 2  # High
-                else:
-                    exif_dict['Exif'][piexif.ExifIFD.Contrast] = 0  # Normal
-            
-            # Saturation
-            if 'saturation' in camera_params and camera_params['saturation'] is not None:
-                saturation_val = float(camera_params['saturation'])
-                # Map saturation to EXIF standard (0=normal, 1=low, 2=high)
-                if saturation_val < 40:
-                    exif_dict['Exif'][piexif.ExifIFD.Saturation] = 1  # Low
-                elif saturation_val > 70:
-                    exif_dict['Exif'][piexif.ExifIFD.Saturation] = 2  # High
-                else:
-                    exif_dict['Exif'][piexif.ExifIFD.Saturation] = 0  # Normal
+            # REMOVED: Brightness, Contrast, and Saturation EXIF tags for performance optimization
+            # These tags were removed to reduce USB write load and improve timing performance
             
             # Sharpness
             if 'sharpness' in camera_params and camera_params['sharpness'] is not None:
@@ -535,15 +510,7 @@ class ImageProcessor:
                 else:
                     exif_dict['Exif'][piexif.ExifIFD.Sharpness] = 0  # Normal
             
-            # Camera backend information (custom field in MakerNote or UserComment)
-            backend = camera_params.get('backend', 'Unknown')
-            camera_format = camera_params.get('format', 'Unknown')
-            
-            # Add technical info to image description
-            tech_info = f"Backend: {backend}, Format: {camera_format}"
-            if piexif.ImageIFD.ImageDescription in exif_dict['0th']:
-                existing_desc = exif_dict['0th'][piexif.ImageIFD.ImageDescription]
-                exif_dict['0th'][piexif.ImageIFD.ImageDescription] = f"{existing_desc} ({tech_info})"
+            # REMOVED: Technical info and ImageDescription updating for performance optimization
             
             # Log successful camera parameter addition
             params_added = []

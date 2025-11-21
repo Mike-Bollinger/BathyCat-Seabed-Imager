@@ -614,12 +614,17 @@ class BathyCatService:
     
     def _get_precise_capture_timestamp(self) -> datetime:
         """
-        Get nanosecond-precise timestamp using GPS PPS hardware when available.
+        Get nanosecond-precise timestamp using optimized GPS PPS hardware timing.
         
-        Priority order:
-        1. GPS PPS hardware timestamp (nanosecond precision)
-        2. Monotonic clock with GPS sync (microsecond precision)
+        OPTIMIZATION: Improved timing hierarchy based on best practices:
+        1. GPS PPS hardware timestamp with sub-microsecond precision
+        2. Monotonic clock with frequent GPS sync (every 60 seconds for accuracy)
         3. System time fallback
+        
+        Key optimizations:
+        - More frequent sync (60s vs 300s) for better accuracy
+        - PPS timestamp validation for quality control
+        - Reduced logging overhead for high-frequency capture
         
         Returns:
             datetime: UTC timestamp with best available precision
@@ -629,12 +634,21 @@ class BathyCatService:
             if self.gps:
                 pps_timestamp_ns = self.gps.get_hardware_timestamp()
                 if pps_timestamp_ns is not None:
-                    # PPS timestamp is GPS-synchronized nanosecond UTC time
-                    utc_seconds = pps_timestamp_ns / 1_000_000_000
-                    return datetime.fromtimestamp(utc_seconds, tz=timezone.utc)
+                    # Validate PPS timestamp quality (should be very recent)
+                    current_time_ns = time.time_ns()
+                    timestamp_age_ms = (current_time_ns - pps_timestamp_ns) / 1_000_000
+                    
+                    # Only use PPS timestamp if it's very recent (< 100ms old)
+                    if timestamp_age_ms < 100:
+                        utc_seconds = pps_timestamp_ns / 1_000_000_000
+                        return datetime.fromtimestamp(utc_seconds, tz=timezone.utc)
+                    else:
+                        # Log quality issue but continue with fallback
+                        if self.image_count % 100 == 0:  # Log every 100 images to reduce overhead
+                            self.logger.debug(f"PPS timestamp too old ({timestamp_age_ms:.1f}ms), using fallback")
             
-            # Resync monotonic time periodically (every 5 minutes) to account for GPS corrections
-            if time.time() - self._last_monotonic_sync > 300:  # 5 minutes
+            # More frequent GPS sync for better accuracy (every 60 seconds vs 300)
+            if time.time() - self._last_monotonic_sync > 60:  # 1 minute
                 self._sync_monotonic_time()
             
             # Get high-precision monotonic timestamp (microsecond precision)
@@ -647,11 +661,14 @@ class BathyCatService:
                 return datetime.fromtimestamp(utc_seconds, tz=timezone.utc)
             else:
                 # Fallback to system time if sync failed
-                self.logger.warning("Boot time offset not available, using system time")
+                if self.image_count % 100 == 0:  # Reduce logging overhead
+                    self.logger.warning("Boot time offset not available, using system time")
                 return datetime.now(timezone.utc)
                 
         except Exception as e:
-            self.logger.warning(f"Precision timestamp failed, using system time: {e}")
+            # Reduce error logging overhead during high-frequency capture
+            if self.image_count % 100 == 0:
+                self.logger.warning(f"Precision timestamp failed, using system time: {e}")
             return datetime.now(timezone.utc)
     
 

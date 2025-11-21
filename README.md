@@ -80,17 +80,19 @@ ls -la /media/usb/bathyimager/images/    # Verify image capture
 
 ## Storage Structure
 ```
+# Images stored on USB for capacity
 /media/usb/bathyimager/
 ├── images/
 │   ├── 20251105/                    # Daily image directories
 │   │   ├── IMG_20251105_143021_001.jpg
 │   │   └── IMG_20251105_143022_002.jpg
 │   └── 20251106/
-└── logs/
-    ├── 20251105/                    # Daily log directories  
-    │   └── bathyimager.log
-    └── 20251106/
-        └── bathyimager.log
+
+# Logs stored on SD card for performance
+/var/log/bathyimager/
+├── bathyimager.log                  # Current log file
+├── bathyimager.log.1                # Rotated logs
+└── bathyimager.log.2.gz
 ```
 
 ## Common Operations
@@ -116,12 +118,30 @@ python3 tests/troubleshoot.py        # Full diagnostics
 python3 tests/troubleshoot.py --quick # Quick health check
 ```
 
+### Log Transfer (WiFi/SSH)
+```bash
+# Transfer logs from Pi to local computer via WiFi
+# Run from your local computer after SSH setup:
+
+# Transfer current log file
+scp bathyimager@[PI_IP_ADDRESS]:/var/log/bathyimager/bathyimager.log ./bathyimager_current.log
+
+# Transfer all log files
+scp -r bathyimager@[PI_IP_ADDRESS]:/var/log/bathyimager/ ./bathyimager_logs/
+
+# Transfer with date stamp
+scp bathyimager@[PI_IP_ADDRESS]:/var/log/bathyimager/bathyimager.log ./bathyimager_$(date +%Y%m%d_%H%M%S).log
+
+# Compressed transfer for large logs
+ssh bathyimager@[PI_IP_ADDRESS] "tar -czf - /var/log/bathyimager/" | tar -xzf - -C ./logs/
+```
+
 ## Configuration Examples
 
 ### High-Speed Deployment (2+ m/s)
 ```json
 {
-  "camera": { "capture_interval": 0.5, "jpeg_quality": 85 },
+  "camera": { "capture_fps": 4.0, "jpeg_quality": 85 },
   "gps": { "require_gps_fix": true, "timeout": 1.0 },
   "timing_precision_mode": true
 }
@@ -130,7 +150,7 @@ python3 tests/troubleshoot.py --quick # Quick health check
 ### Scientific Survey  
 ```json
 {
-  "camera": { "capture_interval": 2.0, "jpeg_quality": 98 },
+  "camera": { "capture_fps": 2.0, "jpeg_quality": 98 },
   "gps": { "require_gps_fix": true },
   "storage": { "cleanup_days": 90 }
 }
@@ -139,7 +159,7 @@ python3 tests/troubleshoot.py --quick # Quick health check
 ### Development/Testing
 ```json
 {
-  "camera": { "capture_interval": 5.0 },
+  "camera": { "capture_fps": 1.0 },
   "gps": { "require_gps_fix": false, "mock_mode": true },
   "logging": { "log_level": "DEBUG" }
 }
@@ -170,6 +190,10 @@ python3 tests/troubleshoot.py --generate-report
 ✅ Images: New files in `/media/usb/bathyimager/images/YYYYMMDD/`  
 ✅ Performance: `python3 tests/troubleshoot.py --quick` passes
 
----
+## Disclaimer
 
-The BathyCat Seabed Imager is a production-ready autonomous imaging system optimized for marine research, seabed mapping, and scientific data collection applications.
+This repository is a scientific product and is not official communication of the National Oceanic and Atmospheric Administration, or the United States Department of Commerce. All NOAA GitHub project code is provided on an 'as is' basis and the user assumes responsibility for its use. Any claims against the Department of Commerce or Department of Commerce bureaus stemming from the use of this GitHub project will be governed by all applicable Federal law. Any reference to specific commercial products, processes, or services by service mark, trademark, manufacturer, or otherwise, does not constitute or imply their endorsement, recommendation or favoring by the Department of Commerce. The Department of Commerce seal and logo, or the seal and logo of a DOC bureau, shall not be used in any manner to imply endorsement of any commercial product or activity by DOC or the United States Government.
+
+## License
+
+Software code created by U.S. Government employees is not subject to copyright in the United States (17 U.S.C. §105). The United States/Department of Commerce reserve all rights to seek and obtain copyright protection in countries other than the United States for Software authored in its entirety by the Department of Commerce. To this end, the Department of Commerce hereby grants to Recipient a royalty-free, nonexclusive license to use, copy, and create derivative works of the Software outside of the United States.

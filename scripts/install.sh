@@ -27,7 +27,7 @@ NC='\033[0m' # No Color
 INSTALL_USER="bathyimager"
 PROJECT_DIR="/home/$INSTALL_USER/BathyCat-Seabed-Imager"
 CONFIG_DIR="$PROJECT_DIR/config"
-LOG_DIR="/media/usb/bathyimager/logs"
+LOG_DIR="/var/log/bathyimager"
 SERVICE_NAME="bathyimager"
 PYTHON_ENV="$PROJECT_DIR/venv"
 
@@ -309,8 +309,9 @@ setup_directories() {
     usermod -a -G dialout,gpio,i2c,spi,video,audio,input "$INSTALL_USER"
     print_status "Added $INSTALL_USER to hardware access groups"
     
-    # Create log directory (only system directory we need)
+    # Create SD card log directory for performance optimization
     mkdir -p "$LOG_DIR"
+    print_status "Created SD card log directory: $LOG_DIR"
     
     # Set up proper video device permissions
     if [ -d /dev ]; then
@@ -570,7 +571,7 @@ create_default_config() {
   
   "log_level": "INFO",
   "log_to_file": true,
-  "log_file_path": "/media/usb/bathyimager/logs/bathyimager.log",
+  "log_file_path": "/var/log/bathyimager/bathyimager.log",
   "log_max_size_mb": 100,
   "log_backup_count": 5,
   
@@ -753,6 +754,9 @@ configure_gps_hat() {
     # Configure Chrony for GPS HAT time synchronization
     configure_chrony_for_gps_hat
     
+    # Apply timing optimizations for precise image capture
+    configure_timing_optimizations
+    
     print_success "GPS HAT hardware configuration complete"
     print_warning "REBOOT REQUIRED for GPS HAT changes to take effect"
 }
@@ -839,6 +843,185 @@ EOF
     fi
     
     return 0
+}
+
+# Function to configure timing optimizations for precise image capture
+configure_timing_optimizations() {
+    print_status "Configuring timing optimizations for precise image capture..."
+    
+    # 1. Configure CPU Governor for Performance
+    print_status "Setting CPU governor to performance mode..."
+    
+    # Set immediate CPU governor to performance
+    if [ -f "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor" ]; then
+        echo "performance" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || true
+        for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+            [ -f "$cpu" ] && echo "performance" > "$cpu" 2>/dev/null || true
+        done
+        print_success "CPU governor set to performance mode"
+    else
+        print_warning "CPU frequency scaling not available"
+    fi
+    
+    # Make CPU governor setting persistent
+    cat > "/etc/systemd/system/cpufreq-performance.service" << 'EOF'
+[Unit]
+Description=Set CPU Governor to Performance
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do [ -f "$cpu" ] && echo "performance" > "$cpu"; done'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    
+    systemctl enable cpufreq-performance.service 2>/dev/null || true
+    print_success "CPU performance governor service configured"
+    
+    # 2. Configure Kernel Boot Parameters for Timing Precision
+    print_status "Configuring kernel boot parameters for timing precision..."
+    
+    # Determine boot config file location
+    local CMDLINE_FILE=""
+    if [ -f "/boot/firmware/cmdline.txt" ]; then
+        CMDLINE_FILE="/boot/firmware/cmdline.txt"
+    elif [ -f "/boot/cmdline.txt" ]; then
+        CMDLINE_FILE="/boot/cmdline.txt"
+    else
+        print_warning "cmdline.txt not found - skipping kernel parameter optimization"
+        return 1
+    fi
+    
+    print_status "Using cmdline file: $CMDLINE_FILE"
+    
+    # Backup original cmdline
+    cp "$CMDLINE_FILE" "$CMDLINE_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+    
+    # Read current cmdline
+    local current_cmdline=$(cat "$CMDLINE_FILE")
+    local new_params=""
+    
+    # Add timing optimization parameters if not already present
+    if ! echo "$current_cmdline" | grep -q "isolcpus="; then
+        new_params="$new_params isolcpus=3"
+        print_status "Adding CPU isolation parameter"
+    fi
+    
+    if ! echo "$current_cmdline" | grep -q "rcu_nocbs="; then
+        new_params="$new_params rcu_nocbs=3"
+        print_status "Adding RCU callback offload parameter"
+    fi
+    
+    if ! echo "$current_cmdline" | grep -q "nohz_full="; then
+        new_params="$new_params nohz_full=3"
+        print_status "Adding tickless CPU parameter"
+    fi
+    
+    if ! echo "$current_cmdline" | grep -q "preempt="; then
+        new_params="$new_params preempt=none"
+        print_status "Adding preemption control parameter"
+    fi
+    
+    if ! echo "$current_cmdline" | grep -q "processor.max_cstate="; then
+        new_params="$new_params processor.max_cstate=1"
+        print_status "Adding CPU C-state limit parameter"
+    fi
+    
+    if ! echo "$current_cmdline" | grep -q "intel_idle.max_cstate="; then
+        new_params="$new_params intel_idle.max_cstate=0"
+        print_status "Adding Intel idle state parameter"
+    fi
+    
+    # Add new parameters if any were needed
+    if [ -n "$new_params" ]; then
+        echo "$current_cmdline$new_params" > "$CMDLINE_FILE"
+        print_success "Kernel timing optimization parameters added"
+    else
+        print_success "Kernel timing parameters already configured"
+    fi
+    
+    # 3. Configure Real-time Process Priorities
+    print_status "Configuring real-time process priorities..."
+    
+    # Create limits configuration for real-time scheduling
+    cat > "/etc/security/limits.d/99-bathyimager-realtime.conf" << EOF
+# Real-time scheduling limits for BathyImager timing precision
+$INSTALL_USER    soft    rtprio    99
+$INSTALL_USER    hard    rtprio    99
+$INSTALL_USER    soft    nice      -20
+$INSTALL_USER    hard    nice      -20
+$INSTALL_USER    soft    memlock   unlimited
+$INSTALL_USER    hard    memlock   unlimited
+EOF
+    
+    print_success "Real-time process limits configured"
+    
+    # 4. Configure IRQ Affinity for GPS PPS
+    print_status "Configuring IRQ affinity optimization..."
+    
+    # Create IRQ affinity service for GPS PPS timing
+    cat > "/etc/systemd/system/irq-affinity-gps.service" << 'EOF'
+[Unit]
+Description=Optimize IRQ Affinity for GPS PPS Timing
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c '
+# Move all IRQs away from CPU 3 (isolated for timing-critical tasks)
+for irq in /proc/irq/*/smp_affinity; do
+    [ -f "$irq" ] && echo "7" > "$irq" 2>/dev/null || true
+done
+
+# Set GPIO interrupt (PPS) to high priority if available
+if [ -d "/proc/irq" ]; then
+    for irq_dir in /proc/irq/*/; do
+        if [ -f "${irq_dir}gpiochip0" ] || [ -f "${irq_dir}gpio" ]; then
+            echo "1" > "${irq_dir}smp_affinity" 2>/dev/null || true
+        fi
+    done
+fi
+'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    
+    systemctl enable irq-affinity-gps.service 2>/dev/null || true
+    print_success "IRQ affinity optimization service configured"
+    
+    # 5. Configure GPIO Performance Settings
+    print_status "Configuring GPIO performance settings..."
+    
+    # Set GPIO driver for better PPS timing
+    if [ -f "/boot/firmware/config.txt" ]; then
+        local GPIO_CONFIG="/boot/firmware/config.txt"
+    elif [ -f "/boot/config.txt" ]; then
+        local GPIO_CONFIG="/boot/config.txt"
+    else
+        print_warning "Boot config not found for GPIO optimization"
+        return 1
+    fi
+    
+    # Add GPIO performance optimizations if not present
+    if ! grep -q "# GPIO Performance Optimizations for BathyCat" "$GPIO_CONFIG"; then
+        cat >> "$GPIO_CONFIG" << 'EOF'
+
+# GPIO Performance Optimizations for BathyCat
+# Reduce GPIO interrupt latency for PPS timing
+gpio=4=ip,pu  # GPS PPS input with pullup
+EOF
+        print_success "GPIO performance optimizations added to boot config"
+    else
+        print_success "GPIO performance optimizations already configured"
+    fi
+    
+    print_success "Timing optimizations configuration complete"
+    print_warning "REBOOT REQUIRED for timing optimizations to take effect"
 }
 
 # Function to configure log rotation
