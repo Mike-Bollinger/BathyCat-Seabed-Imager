@@ -185,9 +185,8 @@ class StorageManager:
             today_path = os.path.join(self.images_path, today_dir)
             os.makedirs(today_path, exist_ok=True)
             
-            # Create logs directory (separate from images)
-            logs_path = os.path.join(self.base_path, 'logs')
-            os.makedirs(logs_path, exist_ok=True)
+            # Note: Logs are now stored on SD card (/var/log/bathyimager/) for performance
+            # USB storage is only used for images
             
             self.logger.debug(f"Directory structure created: {today_path}")
             

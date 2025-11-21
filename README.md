@@ -88,11 +88,14 @@ ls -la /media/usb/bathyimager/images/    # Verify image capture
 │   │   └── IMG_20251105_143022_002.jpg
 │   └── 20251106/
 
-# Logs stored on SD card for performance
+# Logs stored on SD card for performance (daily directories)
 /var/log/bathyimager/
-├── bathyimager.log                  # Current log file
-├── bathyimager.log.1                # Rotated logs
-└── bathyimager.log.2.gz
+├── 20251121/                        # Daily log directories
+│   └── bathyimager.log              # Current day's log file
+├── 20251120/
+│   └── bathyimager.log
+└── 20251119/
+    └── bathyimager.log
 ```
 
 ## Common Operations
@@ -123,17 +126,20 @@ python3 tests/troubleshoot.py --quick # Quick health check
 # Transfer logs from Pi to local computer via WiFi
 # Run from your local computer after SSH setup:
 
-# Transfer current log file
-scp bathyimager@[PI_IP_ADDRESS]:/var/log/bathyimager/bathyimager.log ./bathyimager_current.log
+# Transfer today's log file (replace YYYYMMDD with actual date)
+scp bathyimager@[PI_IP_ADDRESS]:/var/log/bathyimager/20251121/bathyimager.log ./bathyimager_20251121.log
 
-# Transfer all log files
+# Transfer all log files (all daily directories)
 scp -r bathyimager@[PI_IP_ADDRESS]:/var/log/bathyimager/ ./bathyimager_logs/
 
-# Transfer with date stamp
-scp bathyimager@[PI_IP_ADDRESS]:/var/log/bathyimager/bathyimager.log ./bathyimager_$(date +%Y%m%d_%H%M%S).log
+# Transfer specific date's logs
+scp -r bathyimager@[PI_IP_ADDRESS]:/var/log/bathyimager/20251121/ ./logs_20251121/
 
 # Compressed transfer for large logs
 ssh bathyimager@[PI_IP_ADDRESS] "tar -czf - /var/log/bathyimager/" | tar -xzf - -C ./logs/
+
+# List available log dates first
+ssh bathyimager@[PI_IP_ADDRESS] "ls -la /var/log/bathyimager/"
 ```
 
 ## Configuration Examples
@@ -182,7 +188,7 @@ python3 tests/troubleshoot.py --generate-report
 
 ### Resources
 - **Issues**: [GitHub Issues](https://github.com/Mike-Bollinger/BathyCat-Seabed-Imager/issues)
-- **Logs**: `/media/usb/bathyimager/logs/YYYYMMDD/`
+- **Logs**: `/var/log/bathyimager/YYYYMMDD/`
 
 ### System Health Check
 ✅ Service running: `systemctl status bathyimager` shows "active"  

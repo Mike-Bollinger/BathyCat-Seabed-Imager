@@ -1026,19 +1026,21 @@ EOF
 
 # Function to configure log rotation
 setup_log_rotation() {
-    print_status "Setting up log rotation..."
+    print_status "Setting up log rotation for daily directory structure..."
     
     cat > "/etc/logrotate.d/bathyimager" << EOF
-$LOG_DIR/*.log {
+# BathyImager logs organized in daily directories
+$LOG_DIR/*/bathyimager.log {
     daily
     missingok
-    rotate 7
+    rotate 30
     compress
     delaycompress
     notifempty
     create 644 $INSTALL_USER $INSTALL_USER
+    # Clean up old daily directories (older than 30 days)
     postrotate
-        systemctl reload-or-restart $SERVICE_NAME
+        find $LOG_DIR -type d -name "????????" -mtime +30 -exec rm -rf {} + 2>/dev/null || true
     endscript
 }
 EOF
