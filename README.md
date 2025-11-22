@@ -30,6 +30,7 @@ The BathyCat Seabed Imager captures high-quality geotagged underwater imagery fr
 ### Optional Components  
 - **Status LEDs** (4x with 220Ω resistors)
 - **CR1220 Battery** (for GPS HAT RTC backup)
+- **Shutdown Button** (Omron B3F-4055 or similar momentary pushbutton)
 
 ## 🚀 Quick Start
 
@@ -78,6 +79,12 @@ ls -la /media/usb/bathyimager/images/    # Verify image capture
 - **Yellow (Camera)**: Flashes = Image captured | SOS = Camera error  
 - **Red (Error)**: Off = Normal | Solid = System error
 
+### Safe Shutdown Button (GPIO 17)
+**Two-stage shutdown process to prevent accidental power-off:**
+1. **First Press**: All LEDs blink (10s timeout) - system continues running
+2. **Second Press** (within 10s): Stop service → shutdown system (Green LED blinks)
+3. **Timeout**: Return to normal operation if no second press
+
 ## Storage Structure
 ```
 # Images stored on USB for capacity
@@ -107,6 +114,10 @@ sudo systemctl stop bathyimager       # Stop service
 sudo systemctl restart bathyimager    # Restart service
 sudo systemctl status bathyimager     # Check status
 sudo journalctl -u bathyimager -f     # Monitor logs
+
+# Safe shutdown button service
+sudo systemctl status shutdown-button  # Check shutdown button status
+sudo journalctl -u shutdown-button -f  # Monitor shutdown button logs
 ```
 
 ### Configuration

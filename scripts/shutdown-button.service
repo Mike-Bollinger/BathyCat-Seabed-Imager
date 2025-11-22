@@ -1,0 +1,24 @@
+[Unit]
+Description=BathyCat Shutdown Button Handler
+After=multi-user.target
+Wants=bathyimager.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/bin/python3 /home/bathyimager/BathyCat-Seabed-Imager/scripts/shutdown_button.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Environment
+Environment=PYTHONPATH=/home/bathyimager/BathyCat-Seabed-Imager/src
+
+# Process management
+KillMode=process
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -43,6 +43,9 @@
   "led_camera_pin": 24,
   "led_error_pin": 25,
   
+  "shutdown_button_pin": 17,
+  "shutdown_button_enabled": true,
+  
   "log_level": "INFO",
   "log_to_file": true,
   "log_file_path": "/var/log/bathyimager/bathyimager.log",

@@ -569,6 +569,9 @@ create_default_config() {
   "led_camera_pin": 24,
   "led_error_pin": 25,
   
+  "shutdown_button_pin": 17,
+  "shutdown_button_enabled": true,
+  
   "log_level": "INFO",
   "log_to_file": true,
   "log_file_path": "/var/log/bathyimager/bathyimager.log",
@@ -1153,6 +1156,16 @@ enable_service() {
     # No separate services needed - GPS syncs time automatically on first fix
     print_success "GPS time sync integrated into main GPS service"
     
+    # Install shutdown button service
+    if [ -f "$PROJECT_DIR/scripts/shutdown-button.service" ]; then
+        cp "$PROJECT_DIR/scripts/shutdown-button.service" "/etc/systemd/system/"
+        systemctl daemon-reload
+        systemctl enable shutdown-button
+        print_success "Shutdown button service installed and enabled"
+    else
+        print_warning "Shutdown button service file not found"
+    fi
+    
     # Enable main BathyImager service
     systemctl enable "$SERVICE_NAME"
     
@@ -1165,6 +1178,14 @@ enable_service() {
         print_success "BathyImager imaging service is running"
     else
         print_warning "BathyImager imaging service failed to start - check logs with: journalctl -u $SERVICE_NAME"
+    fi
+    
+    # Start shutdown button service
+    systemctl start shutdown-button
+    if systemctl is-active --quiet shutdown-button; then
+        print_success "Shutdown button service is running"
+    else
+        print_warning "Shutdown button service failed to start - check logs with: journalctl -u shutdown-button"
     fi
     
     # Show GPS boot sync service status
