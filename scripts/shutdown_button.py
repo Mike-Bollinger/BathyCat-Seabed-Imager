@@ -82,7 +82,7 @@ class ShutdownHandler:
         return logger
     
     def _setup_gpio(self) -> None:
-        """Initialize GPIO pins for button and LEDs."""
+        """Initialize GPIO pins for button only - LEDs controlled by main service."""
         try:
             # Set GPIO mode
             GPIO.setmode(GPIO.BCM)
@@ -91,21 +91,37 @@ class ShutdownHandler:
             # Setup shutdown button with internal pull-up resistor
             GPIO.setup(SHUTDOWN_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
             
-            # Setup LED pins as outputs
-            for pin in [LED_POWER_PIN, LED_GPS_PIN, LED_CAMERA_PIN, LED_ERROR_PIN]:
-                GPIO.setup(pin, GPIO.OUT)
-                GPIO.output(pin, GPIO.LOW)  # Start with LEDs off
+            # NOTE: Do NOT setup LED pins here - they are controlled by the main BathyImager service
+            # We'll only take control of LEDs during shutdown confirmation process
             
             # Add button event detection with debouncing
             GPIO.add_event_detect(SHUTDOWN_BUTTON_PIN, GPIO.FALLING, 
                                 callback=self._button_pressed, 
                                 bouncetime=int(DEBOUNCE_TIME * 1000))
             
-            self.logger.info("✅ GPIO initialized successfully")
+            self.logger.info("✅ GPIO initialized successfully (button only)")
+            self.logger.info("   LEDs remain under control of main BathyImager service")
             
         except Exception as e:
             self.logger.error(f"❌ GPIO setup failed: {e}")
-            sys.exit(1)
+            # If GPIO setup fails, it might be because another process is using the pins
+            # Let's try a more gentle approach
+            try:
+                self.logger.info("   Attempting gentle GPIO recovery...")
+                GPIO.cleanup()
+                time.sleep(1)
+                
+                # Try again with minimal setup
+                GPIO.setmode(GPIO.BCM)
+                GPIO.setwarnings(False)
+                GPIO.setup(SHUTDOWN_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+                
+                # Use polling instead of event detection if edge detection fails
+                self.logger.info("✅ GPIO initialized with polling mode (edge detection unavailable)")
+                
+            except Exception as e2:
+                self.logger.error(f"❌ GPIO recovery failed: {e2}")
+                sys.exit(1)
     
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals cleanly."""
@@ -114,7 +130,7 @@ class ShutdownHandler:
         self._cleanup()
         sys.exit(0)
     
-    def _button_pressed(self, channel):
+    def _button_pressed(self, channel=None):
         """Handle button press events."""
         if not self.running or self.shutdown_in_progress:
             return
@@ -123,7 +139,11 @@ class ShutdownHandler:
         time.sleep(DEBOUNCE_TIME)
         
         # Check if button is still pressed (active low)
-        if GPIO.input(SHUTDOWN_BUTTON_PIN) != GPIO.LOW:
+        try:
+            if GPIO.input(SHUTDOWN_BUTTON_PIN) != GPIO.LOW:
+                return
+        except Exception as e:
+            self.logger.warning(f"Could not read button state: {e}")
             return
             
         current_time = datetime.now()
@@ -135,6 +155,31 @@ class ShutdownHandler:
         else:
             # Second button press - proceed with shutdown
             self._proceed_with_shutdown()
+    
+    def _check_button_polling(self):
+        """Poll button state when edge detection is not available."""
+        last_state = GPIO.HIGH
+        last_press_time = 0
+        
+        while self.running:
+            try:
+                current_state = GPIO.input(SHUTDOWN_BUTTON_PIN)
+                current_time = time.time()
+                
+                # Detect falling edge (button press)
+                if last_state == GPIO.HIGH and current_state == GPIO.LOW:
+                    # Debounce check
+                    if current_time - last_press_time > DEBOUNCE_TIME * 4:  # Extra debounce for polling
+                        self.logger.debug("Button press detected via polling")
+                        self._button_pressed()
+                        last_press_time = current_time
+                
+                last_state = current_state
+                time.sleep(0.05)  # 50ms polling interval
+                
+            except Exception as e:
+                self.logger.warning(f"Button polling error: {e}")
+                time.sleep(1)  # Wait longer on error
     
     def _start_confirmation(self) -> None:
         """Start the confirmation process with LED blinking."""
@@ -152,19 +197,51 @@ class ShutdownHandler:
         self.confirmation_thread.start()
     
     def _save_led_states(self) -> None:
-        """Save current LED states to restore later if needed."""
+        """Save current LED states and take temporary control for shutdown process."""
         try:
+            # Read current states before taking control
             for pin in [LED_POWER_PIN, LED_GPS_PIN, LED_CAMERA_PIN, LED_ERROR_PIN]:
-                self.original_led_states[pin] = GPIO.input(pin)
+                try:
+                    self.original_led_states[pin] = GPIO.input(pin)
+                except Exception:
+                    # If we can't read the state, assume it was off
+                    self.original_led_states[pin] = GPIO.LOW
+            
+            # Temporarily setup LED pins as outputs for shutdown confirmation
+            for pin in [LED_POWER_PIN, LED_GPS_PIN, LED_CAMERA_PIN, LED_ERROR_PIN]:
+                try:
+                    GPIO.setup(pin, GPIO.OUT)
+                except Exception as e:
+                    self.logger.warning(f"Could not setup LED pin {pin}: {e}")
+                    
+            self.logger.info("🔄 Temporarily taking control of LEDs for shutdown confirmation")
+            
         except Exception as e:
             self.logger.warning(f"Could not save LED states: {e}")
     
     def _restore_led_states(self) -> None:
-        """Restore original LED states."""
+        """Restore original LED states and return control to main service."""
         try:
+            # Restore the last known states
             for pin, state in self.original_led_states.items():
-                GPIO.output(pin, state)
-            self.logger.info("🔄 LED states restored to normal operation")
+                try:
+                    GPIO.output(pin, state)
+                except Exception as e:
+                    self.logger.warning(f"Could not restore LED pin {pin}: {e}")
+            
+            # Give a moment for the states to settle
+            time.sleep(0.1)
+            
+            # Release control back to main service by setting pins as inputs
+            # The main service will re-take control on its next LED update
+            for pin in [LED_POWER_PIN, LED_GPS_PIN, LED_CAMERA_PIN, LED_ERROR_PIN]:
+                try:
+                    GPIO.setup(pin, GPIO.IN)
+                except Exception as e:
+                    self.logger.warning(f"Could not release LED pin {pin}: {e}")
+                    
+            self.logger.info("🔄 LED control returned to main BathyImager service")
+            
         except Exception as e:
             self.logger.warning(f"Could not restore LED states: {e}")
     
@@ -177,9 +254,13 @@ class ShutdownHandler:
             # Blink all LEDs during confirmation period
             led_state = False
             while datetime.now() < end_time and self.confirmation_active and self.running:
-                # Toggle all LEDs
+                # Toggle all LEDs (with error handling for each)
                 for pin in [LED_POWER_PIN, LED_GPS_PIN, LED_CAMERA_PIN, LED_ERROR_PIN]:
-                    GPIO.output(pin, GPIO.HIGH if led_state else GPIO.LOW)
+                    try:
+                        GPIO.output(pin, GPIO.HIGH if led_state else GPIO.LOW)
+                    except Exception as e:
+                        # If we can't control a specific LED, just continue with others
+                        self.logger.debug(f"Could not control LED pin {pin}: {e}")
                 
                 led_state = not led_state
                 time.sleep(BLINK_INTERVAL)
@@ -217,10 +298,19 @@ class ShutdownHandler:
     def _shutdown_sequence(self) -> None:
         """Execute the complete shutdown sequence."""
         try:
-            # Turn off all LEDs except power (green)
-            GPIO.output(LED_GPS_PIN, GPIO.LOW)
-            GPIO.output(LED_CAMERA_PIN, GPIO.LOW)
-            GPIO.output(LED_ERROR_PIN, GPIO.LOW)
+            # Take control of LEDs for shutdown sequence
+            self.logger.info("🛑 Taking control of LEDs for shutdown sequence...")
+            try:
+                for pin in [LED_POWER_PIN, LED_GPS_PIN, LED_CAMERA_PIN, LED_ERROR_PIN]:
+                    GPIO.setup(pin, GPIO.OUT)
+                
+                # Turn off all LEDs except power (green)
+                GPIO.output(LED_GPS_PIN, GPIO.LOW)
+                GPIO.output(LED_CAMERA_PIN, GPIO.LOW)
+                GPIO.output(LED_ERROR_PIN, GPIO.LOW)
+                
+            except Exception as e:
+                self.logger.warning(f"Could not control LEDs during shutdown: {e}")
             
             # Blink green LED during shutdown
             self._start_power_led_blink()
@@ -259,7 +349,10 @@ class ShutdownHandler:
             time.sleep(3)
             
             # Turn off power LED before shutdown
-            GPIO.output(LED_POWER_PIN, GPIO.LOW)
+            try:
+                GPIO.output(LED_POWER_PIN, GPIO.LOW)
+            except Exception:
+                pass  # Ignore LED errors during final shutdown
             
             # Execute shutdown
             subprocess.run(['shutdown', '-h', 'now'], timeout=5)
@@ -274,10 +367,16 @@ class ShutdownHandler:
         def blink_power_led():
             try:
                 while self.shutdown_in_progress and self.running:
-                    GPIO.output(LED_POWER_PIN, GPIO.HIGH)
-                    time.sleep(0.3)
-                    GPIO.output(LED_POWER_PIN, GPIO.LOW)
-                    time.sleep(0.3)
+                    try:
+                        GPIO.output(LED_POWER_PIN, GPIO.HIGH)
+                        time.sleep(0.3)
+                        GPIO.output(LED_POWER_PIN, GPIO.LOW)
+                        time.sleep(0.3)
+                    except Exception as e:
+                        # If LED control fails, just continue without blinking
+                        self.logger.debug(f"LED blink skipped: {e}")
+                        time.sleep(0.6)  # Keep timing consistent
+                        
             except Exception as e:
                 self.logger.error(f"Power LED blink error: {e}")
         
@@ -299,6 +398,25 @@ class ShutdownHandler:
             self.logger.info("🔄 Shutdown button handler running...")
             self.logger.info("   Press button once to start shutdown confirmation")
             self.logger.info("   Press button again within 10 seconds to shutdown")
+            
+            # Check if we need to use polling mode (edge detection failed)
+            use_polling = False
+            try:
+                # Test if edge detection is working
+                GPIO.remove_event_detect(SHUTDOWN_BUTTON_PIN)
+                GPIO.add_event_detect(SHUTDOWN_BUTTON_PIN, GPIO.FALLING, 
+                                    callback=self._button_pressed, 
+                                    bouncetime=int(DEBOUNCE_TIME * 1000))
+                self.logger.info("   Using edge detection mode")
+            except Exception as e:
+                self.logger.info(f"   Edge detection unavailable ({e}), using polling mode")
+                use_polling = True
+            
+            if use_polling:
+                # Start polling in a separate thread
+                polling_thread = threading.Thread(target=self._check_button_polling)
+                polling_thread.daemon = True
+                polling_thread.start()
             
             # Keep the main thread alive
             while self.running:
