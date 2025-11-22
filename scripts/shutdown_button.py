@@ -182,13 +182,17 @@ class ShutdownHandler:
                 time.sleep(1)  # Wait longer on error
     
     def _start_confirmation(self) -> None:
-        """Start the confirmation process with LED blinking."""
-        self.logger.info("⚠️  First button press detected - starting confirmation process")
-        self.logger.info(f"⏰ Press button again within {CONFIRMATION_TIMEOUT} seconds to shutdown")
+        """Start the confirmation process - stop service and blink LEDs."""
+        self.logger.info("⚠️  First button press detected - stopping BathyImager service")
+        self.logger.info(f"⏰ Press button again within {CONFIRMATION_TIMEOUT} seconds to shutdown Pi")
+        self.logger.info("   Otherwise service will restart automatically")
         
         self.confirmation_active = True
         
-        # Save current LED states (in case service is controlling them)
+        # Stop the BathyImager service first
+        self._stop_bathyimager_service()
+        
+        # Save current LED states and take control for blinking
         self._save_led_states()
         
         # Start confirmation thread for LED blinking and timeout
@@ -274,19 +278,52 @@ class ShutdownHandler:
             self._cancel_confirmation()
     
     def _cancel_confirmation(self) -> None:
-        """Cancel the confirmation process and return to normal operation."""
-        self.logger.info("⏰ Confirmation timeout - returning to normal operation")
+        """Cancel the confirmation process and restart the BathyImager service."""
+        self.logger.info("⏰ Confirmation timeout - restarting BathyImager service")
         self.confirmation_active = False
         
         # Restore original LED states
         self._restore_led_states()
+        
+        # Restart the BathyImager service
+        self._start_bathyimager_service()
+    
+    def _stop_bathyimager_service(self) -> None:
+        """Stop the BathyImager service."""
+        try:
+            self.logger.info("🛑 Stopping BathyImager service...")
+            result = subprocess.run(['systemctl', 'stop', SERVICE_NAME], 
+                                  capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                self.logger.info("✅ BathyImager service stopped successfully")
+            else:
+                self.logger.warning(f"⚠️  Service stop returned code {result.returncode}: {result.stderr}")
+        except subprocess.TimeoutExpired:
+            self.logger.error("❌ Service stop timed out")
+        except Exception as e:
+            self.logger.error(f"❌ Failed to stop service: {e}")
+    
+    def _start_bathyimager_service(self) -> None:
+        """Start the BathyImager service."""
+        try:
+            self.logger.info("🔄 Starting BathyImager service...")
+            result = subprocess.run(['systemctl', 'start', SERVICE_NAME], 
+                                  capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                self.logger.info("✅ BathyImager service started successfully")
+            else:
+                self.logger.warning(f"⚠️  Service start returned code {result.returncode}: {result.stderr}")
+        except subprocess.TimeoutExpired:
+            self.logger.error("❌ Service start timed out")
+        except Exception as e:
+            self.logger.error(f"❌ Failed to start service: {e}")
     
     def _proceed_with_shutdown(self) -> None:
-        """Proceed with the shutdown process."""
+        """Proceed with the full system shutdown."""
         if self.shutdown_in_progress:
             return
             
-        self.logger.info("🚨 Second button press confirmed - initiating shutdown sequence")
+        self.logger.info("🚨 Second button press confirmed - shutting down Pi")
         self.shutdown_in_progress = True
         self.confirmation_active = False
         
@@ -296,10 +333,10 @@ class ShutdownHandler:
         shutdown_thread.start()
     
     def _shutdown_sequence(self) -> None:
-        """Execute the complete shutdown sequence."""
+        """Execute the complete Pi shutdown sequence."""
         try:
             # Take control of LEDs for shutdown sequence
-            self.logger.info("🛑 Taking control of LEDs for shutdown sequence...")
+            self.logger.info("� Preparing for system shutdown...")
             try:
                 for pin in [LED_POWER_PIN, LED_GPS_PIN, LED_CAMERA_PIN, LED_ERROR_PIN]:
                     GPIO.setup(pin, GPIO.OUT)
@@ -315,24 +352,8 @@ class ShutdownHandler:
             # Blink green LED during shutdown
             self._start_power_led_blink()
             
-            self.logger.info("🛑 Stopping BathyCat imaging service...")
-            
-            # Stop the bathyimager service
-            try:
-                result = subprocess.run(['systemctl', 'stop', SERVICE_NAME], 
-                                      capture_output=True, text=True, timeout=30)
-                if result.returncode == 0:
-                    self.logger.info("✅ BathyCat service stopped successfully")
-                else:
-                    self.logger.warning(f"⚠️  Service stop returned code {result.returncode}: {result.stderr}")
-            except subprocess.TimeoutExpired:
-                self.logger.error("❌ Service stop timed out")
-            except Exception as e:
-                self.logger.error(f"❌ Failed to stop service: {e}")
-            
-            # Wait a moment for service to fully stop
-            self.logger.info("⏳ Waiting for service shutdown to complete...")
-            time.sleep(5)
+            # Service is already stopped from first button press
+            self.logger.info("✅ BathyImager service already stopped")
             
             # Sync filesystem
             self.logger.info("💾 Syncing filesystem...")
@@ -396,8 +417,9 @@ class ShutdownHandler:
         """Main run loop."""
         try:
             self.logger.info("🔄 Shutdown button handler running...")
-            self.logger.info("   Press button once to start shutdown confirmation")
-            self.logger.info("   Press button again within 10 seconds to shutdown")
+            self.logger.info("   Press button once to STOP BathyImager service")
+            self.logger.info("   Press button again within 10 seconds to SHUTDOWN Pi")
+            self.logger.info("   If no second press, service will restart automatically")
             
             # Check if we need to use polling mode (edge detection failed)
             use_polling = False
