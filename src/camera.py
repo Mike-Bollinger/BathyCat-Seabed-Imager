@@ -17,8 +17,10 @@ Features:
 import cv2
 import logging
 import time
+import math
 import subprocess
 import re
+import threading
 from typing import Optional, Tuple, Dict, Any
 import numpy as np
 
@@ -61,6 +63,19 @@ class Camera:
         self.saturation = config.get('camera_saturation', 60)
         self.exposure = config.get('camera_exposure', -6)
         self.white_balance = config.get('camera_white_balance', 4000)
+        self.buffer_size = config.get('camera_buffer_size', 1)
+        self.flush_before_read = config.get('camera_flush_before_read', True)
+        self.flush_frame_count_override = config.get('camera_flush_frame_count')
+        self.flush_time_budget_ms = config.get('camera_flush_time_budget_ms', 120.0)
+        self.capture_fps_target = config.get('capture_fps')
+        self.reader_thread_enabled = config.get('camera_reader_thread_enabled', False)
+        self.reader_thread_grab_only = config.get('camera_reader_thread_grab_only', False)
+        self._computed_flush_count = self._determine_flush_count()
+        self._reader_thread = None
+        self._reader_stop_event = threading.Event()
+        self._reader_lock = threading.Lock()
+        self._latest_frame = None
+        self._latest_timestamp_ns = None
         
     def initialize(self) -> bool:
         """
@@ -90,6 +105,9 @@ class Camera:
             self.logger.info("Camera initialized successfully")
             self.logger.info(f"Camera resolution: {self.width}x{self.height}")
             self.logger.info(f"Camera FPS: {self.fps}")
+
+            if self.reader_thread_enabled:
+                self._start_reader_thread()
             
             return True
             
@@ -114,6 +132,178 @@ class Camera:
         
         # Set FPS
         self.cap.set(cv2.CAP_PROP_FPS, self.fps)
+        self._apply_buffer_size()
+
+    def _apply_buffer_size(self) -> None:
+        """Attempt to enforce a small capture buffer via CAP_PROP_BUFFERSIZE."""
+        if not self.cap:
+            return
+
+        if self.buffer_size is None:
+            return
+
+        try:
+            desired_size = max(1, int(self.buffer_size))
+        except (TypeError, ValueError):
+            self.logger.debug(f"Invalid camera_buffer_size value: {self.buffer_size}")
+            return
+
+        try:
+            success = self.cap.set(cv2.CAP_PROP_BUFFERSIZE, desired_size)
+            backend = None
+            try:
+                backend = self.cap.getBackendName()
+            except Exception:
+                backend = "unknown"
+
+            if success:
+                self.logger.info(
+                    f"Requested CAP_PROP_BUFFERSIZE={desired_size} (backend={backend})"
+                )
+            else:
+                self.logger.debug(
+                    "CAP_PROP_BUFFERSIZE not supported by backend; "
+                    f"falling back to software flush of {self._computed_flush_count} frames"
+                )
+        except Exception as exc:
+            self.logger.debug(f"Failed to set CAP_PROP_BUFFERSIZE: {exc}")
+
+    def _determine_flush_count(self) -> int:
+        """Calculate how many frames to flush from buffer before reads."""
+        if not self.flush_before_read:
+            return 0
+
+        if self.flush_frame_count_override is not None:
+            try:
+                return max(0, int(self.flush_frame_count_override))
+            except (TypeError, ValueError):
+                self.logger.debug(
+                    "camera_flush_frame_count override is invalid; ignoring and computing automatically"
+                )
+
+        if not self.capture_fps_target or not self.fps:
+            return 0
+
+        try:
+            ratio = float(self.fps) / float(self.capture_fps_target)
+        except Exception:
+            return 0
+
+        if ratio <= 1.1:
+            return 0
+
+        # Drop enough frames to roughly match requested capture FPS without backlog
+        computed = int(math.ceil(ratio) - 1)
+        return max(0, min(60, computed))
+
+    def _flush_capture_buffer(self) -> None:
+        """Software-level buffer flush using grab() with a time budget."""
+        if not self.cap or not self.flush_before_read:
+            return
+
+        flush_target = self._computed_flush_count
+        if flush_target <= 0:
+            return
+
+        dropped = 0
+        start = time.perf_counter()
+        time_budget = (self.flush_time_budget_ms or 0) / 1000.0
+
+        while dropped < flush_target:
+            if time_budget and (time.perf_counter() - start) >= time_budget:
+                break
+
+            ret = False
+            try:
+                ret = self.cap.grab()
+            except Exception as exc:
+                self.logger.debug(f"grab() failed while flushing buffer: {exc}")
+                break
+
+            if not ret:
+                break
+
+            dropped += 1
+
+        if dropped:
+            self.logger.debug(
+                f"Software-flushed {dropped} frame(s) before capture (target={flush_target})"
+            )
+
+    def _start_reader_thread(self) -> None:
+        """Start a background thread that keeps only the freshest frame."""
+        if not self.reader_thread_enabled:
+            return
+
+        if not self.cap:
+            self.logger.warning("Cannot start reader thread before camera is ready")
+            return
+
+        if self._reader_thread and self._reader_thread.is_alive():
+            return
+
+        self._reader_stop_event.clear()
+        self._reader_thread = threading.Thread(
+            target=self._reader_loop,
+            name="camera-reader-thread",
+            daemon=True,
+        )
+        self._reader_thread.start()
+        self.logger.info("Camera reader thread started")
+
+    def _reader_loop(self) -> None:
+        """Continuously pull frames to keep buffer empty."""
+        while not self._reader_stop_event.is_set():
+            if not self.cap:
+                time.sleep(0.05)
+                continue
+
+            ret = False
+            frame = None
+            timestamp_ns = time.monotonic_ns()
+
+            try:
+                if self.reader_thread_grab_only:
+                    ret = self.cap.grab()
+                    timestamp_ns = time.monotonic_ns()
+                    if ret:
+                        ret, frame = self.cap.retrieve()
+                else:
+                    ret, frame = self.cap.read()
+                    timestamp_ns = time.monotonic_ns()
+            except Exception as exc:
+                self.logger.debug(f"Reader thread capture error: {exc}")
+                time.sleep(0.05)
+                continue
+
+            if not ret or frame is None:
+                time.sleep(0.01)
+                continue
+
+            with self._reader_lock:
+                self._latest_frame = frame.copy()
+                self._latest_timestamp_ns = timestamp_ns
+
+        self.logger.info("Camera reader thread stopped")
+
+    def _get_latest_thread_frame(self) -> Tuple[Optional[np.ndarray], Optional[int]]:
+        """Safely fetch the newest frame cached by the reader thread."""
+        with self._reader_lock:
+            if self._latest_frame is None:
+                return None, None
+
+            return self._latest_frame.copy(), self._latest_timestamp_ns
+
+    def _stop_reader_thread(self) -> None:
+        """Signal the reader thread to exit and clear cached frame."""
+        if self._reader_thread:
+            self._reader_stop_event.set()
+            self._reader_thread.join(timeout=1.0)
+            self._reader_thread = None
+
+        with self._reader_lock:
+            self._latest_frame = None
+            self._latest_timestamp_ns = None
         
         # Configure exposure - EMERGENCY FIX for severely overexposed camera (brightness 254.3)
         # Tests showed this camera doesn't respond to OpenCV exposure controls properly
@@ -410,9 +600,20 @@ class Camera:
             return None
 
         try:
-            ret, frame = self.cap.read()
+            frame = None
+
+            if self.reader_thread_enabled:
+                if not (self._reader_thread and self._reader_thread.is_alive()):
+                    self._start_reader_thread()
+
+                frame, _ = self._get_latest_thread_frame()
+            else:
+                self._flush_capture_buffer()
+                ret, frame = self.cap.read()
+                if not ret:
+                    frame = None
             
-            if not ret or frame is None:
+            if frame is None:
                 self.logger.error("Failed to capture frame")
                 return None
 
@@ -450,18 +651,31 @@ class Camera:
         try:
             # OPTIMIZATION: Get timestamp as close to actual capture as possible
             # This minimizes timing uncertainty
-            
-            ret, frame = self.cap.read()
-            # Get timestamp immediately after capture for best precision
+            frame = None
             capture_time_ns = time.monotonic_ns()
+            hardware_timestamp_ns = None
+
+            if self.reader_thread_enabled:
+                if not (self._reader_thread and self._reader_thread.is_alive()):
+                    self._start_reader_thread()
+
+                frame, cached_timestamp = self._get_latest_thread_frame()
+                if cached_timestamp:
+                    capture_time_ns = cached_timestamp
+            else:
+                self._flush_capture_buffer()
+                ret, frame = self.cap.read()
+                capture_time_ns = time.monotonic_ns()
+                if not ret:
+                    frame = None
+                else:
+                    # Try to get hardware timestamp from libcamera metadata if available
+                    hardware_timestamp_ns = self._try_get_hardware_timestamp()
             
-            if not ret or frame is None:
+            if frame is None:
                 if self.frame_count % 100 == 0:  # Reduce logging overhead
                     self.logger.error("Failed to capture frame")
                 return None
-
-            # Try to get hardware timestamp from libcamera metadata if available
-            hardware_timestamp_ns = self._try_get_hardware_timestamp()
             
             # Use hardware timestamp if available, otherwise use software timing
             if hardware_timestamp_ns is not None:
@@ -669,6 +883,7 @@ class Camera:
     
     def _cleanup(self) -> None:
         """Clean up camera resources."""
+        self._stop_reader_thread()
         if self.cap:
             self.cap.release()
             self.cap = None
