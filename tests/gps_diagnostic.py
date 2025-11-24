@@ -53,13 +53,23 @@ def main():
     print("=" * 70)
     print("GPS DIAGNOSTIC TOOL")
     print("=" * 70)
-    print("\nConnecting to GPS on /dev/ttyAMA0...")
     
-    try:
-        ser = serial.Serial('/dev/ttyAMA0', 9600, timeout=1.0)
-        print("✓ GPS connected\n")
-    except Exception as e:
-        print(f"✗ Failed to connect: {e}")
+    # Try common GPS serial port locations
+    gps_ports = ['/dev/serial0', '/dev/ttyAMA0', '/dev/ttyS0']
+    ser = None
+    
+    for port in gps_ports:
+        try:
+            print(f"\nTrying {port}...")
+            ser = serial.Serial(port, 9600, timeout=1.0)
+            print(f"✓ GPS connected on {port}\n")
+            break
+        except Exception as e:
+            print(f"  ✗ {port}: {e}")
+    
+    if not ser:
+        print("\n✗ Failed to connect to GPS on any known port")
+        print("Available ports should include /dev/serial0 for GPS HAT")
         return 1
     
     satellites_in_view = {}
